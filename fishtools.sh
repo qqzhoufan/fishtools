@@ -1,7 +1,8 @@
 #!/bin/bash
+set -eo pipefail
 
 # =================================================================
-# fishtools (咸鱼工具箱) v3.0
+# fishtools (咸鱼工具箱) v3.1
 # Author: 咸鱼银河 (Xianyu Yinhe)
 # Github: https://github.com/qqzhoufan/fishtools
 #
@@ -17,7 +18,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 log_info() {
     echo -e "${BLUE}[INFO] $1${NC}"
@@ -32,7 +33,8 @@ log_error() {
     echo -e "${RED}[ERROR] $1${NC}"
 }
 press_any_key() {
-    read -n 1 -s -r -p "按任意键返回..." </dev/tty
+    echo ""
+    read -n 1 -s -r -p "按任意键返回主菜单..." </dev/tty
 }
 
 # --- 功能实现区 ---
@@ -54,11 +56,16 @@ show_machine_info() {
 show_live_performance() {
     clear
     echo "=============== VPS 实时性能状态 ==============="
-    local cpu_usage=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1"%"}')
+    local cpu_usage
+    cpu_usage=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1"%"}')
     echo "CPU 使用率: $cpu_usage"
-    local mem_info=$(free -m | awk 'NR==2{printf "总计: %s MB / 已用: %s MB / 剩余: %s MB", $2, $3, $4}')
+
+    local mem_info
+    mem_info=$(free -m | awk 'NR==2{printf "总计: %s MB / 已用: %s MB / 剩余: %s MB", $2, $3, $4}')
     echo "内存使用情况: $mem_info"
-    local disk_info=$(df -h / | awk 'NR==2{printf "总计: %s / 已用: %s (%s) / 剩余: %s", $2, $3, $5, $4}')
+
+    local disk_info
+    disk_info=$(df -h / | awk 'NR==2{printf "总计: %s / 已用: %s (%s) / 剩余: %s", $2, $3, $5, $4}')
     echo "硬盘空间 (根目录): $disk_info"
     echo "============================================="
     echo "(此为快照信息，非持续刷新)"
@@ -323,7 +330,7 @@ main() {
     while true; do
         clear
         echo "================================================="
-        echo "      欢迎使用 fishtools by 咸鱼银河 v3.0"
+        echo "      欢迎使用 fishtools by 咸鱼银河 v3.1"
         echo "================================================="
         echo "1. 系统状态监控"
         echo "2. 性能/网络测试"

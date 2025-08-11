@@ -1,6 +1,6 @@
 # fishtools (咸鱼工具箱) 🧰
 
-[![Version](https://img.shields.io/badge/version-v3.0-blue.svg)](https://github.com/qqzhoufan/fishtools)
+[![Version](https://img.shields.io/badge/version-v3.1-blue.svg)](https://github.com/qqzhoufan/fishtools)
 [![Author](https://img.shields.io/badge/author-咸鱼银河-orange.svg)](https://github.com/qqzhoufan)
 [![Language](https://img.shields.io/badge/language-Bash-brightgreen.svg)](https://www.gnu.org/software/bash/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
