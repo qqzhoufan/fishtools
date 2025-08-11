@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =================================================================
-# fishtools (咸鱼工具箱) v2.9
+# fishtools (咸鱼工具箱) v3.0
 # Author: 咸鱼银河 (Xianyu Yinhe)
 # Github: https://github.com/qqzhoufan/fishtools
 #
@@ -37,7 +37,7 @@ press_any_key() {
 
 # --- 功能实现区 ---
 
-# 功能 1: 显示机器静态信息
+# 功能 1.1: 显示机器静态信息
 show_machine_info() {
     clear
     echo "================ 机器基本信息 ================"
@@ -50,20 +50,49 @@ show_machine_info() {
     echo "============================================="
 }
 
-# 功能 4: 显示VPS实时性能
+# 功能 1.2: 显示VPS实时性能
 show_live_performance() {
     clear
     echo "=============== VPS 实时性能状态 ==============="
     local cpu_usage=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1"%"}')
     echo "CPU 使用率: $cpu_usage"
-
     local mem_info=$(free -m | awk 'NR==2{printf "总计: %s MB / 已用: %s MB / 剩余: %s MB", $2, $3, $4}')
     echo "内存使用情况: $mem_info"
-
     local disk_info=$(df -h / | awk 'NR==2{printf "总计: %s / 已用: %s (%s) / 剩余: %s", $2, $3, $5, $4}')
     echo "硬盘空间 (根目录): $disk_info"
     echo "============================================="
     echo "(此为快照信息，非持续刷新)"
+}
+
+# 子菜单：系统状态监控
+show_status_menu() {
+    while true; do
+        clear
+        echo "=========== 系统状态监控子菜单 ==========="
+        echo "1. 显示VPS基本信息"
+        echo "2. 显示VPS实时性能"
+        echo "0. 返回主菜单"
+        echo "=========================================="
+        read -p "请输入您的选择 [0-2]: " status_choice </dev/tty
+
+        case $status_choice in
+            1)
+                show_machine_info
+                press_any_key
+                ;;
+            2)
+                show_live_performance
+                press_any_key
+                ;;
+            0)
+                break
+                ;;
+            *)
+                log_error "无效输入。"
+                press_any_key
+                ;;
+        esac
+    done
 }
 
 # 子菜单: 常用软件安装
@@ -294,22 +323,20 @@ main() {
     while true; do
         clear
         echo "================================================="
-        echo "      欢迎使用 fishtools by 咸鱼银河 v2.9"
+        echo "      欢迎使用 fishtools by 咸鱼银河 v3.0"
         echo "================================================="
-        echo "1. 显示VPS基本信息"
-        echo "2. 性能/网络测试脚本"
+        echo "1. 系统状态监控"
+        echo "2. 性能/网络测试"
         echo "3. DD系统/重装系统"
-        echo "4. 显示VPS实时性能"
-        echo "5. 常用软件安装"
-        echo "6. Docker Compose 项目部署"
+        echo "4. 常用软件安装"
+        echo "5. Docker Compose 项目部署"
         echo "0. 退出脚本"
         echo "-------------------------------------------------"
-        read -p "请输入您的选择 [0-6]: " main_choice </dev/tty
+        read -p "请输入您的选择 [0-5]: " main_choice </dev/tty
 
         case $main_choice in
             1)
-                show_machine_info
-                press_any_key
+                show_status_menu
                 ;;
             2)
                 show_test_menu
@@ -318,13 +345,9 @@ main() {
                 show_dd_menu
                 ;;
             4)
-                show_live_performance
-                press_any_key
-                ;;
-            5)
                 show_install_menu
                 ;;
-            6)
+            5)
                 show_deployment_menu
                 ;;
             0)
