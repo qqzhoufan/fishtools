@@ -1,6 +1,6 @@
 # fishtools (咸鱼工具箱) 🧰
 
-[![Version](https://img.shields.io/badge/version-v2.2-blue.svg)](https://github.com/qqzhoufan/fishtools)
+[![Version](https://img.shields.io/badge/version-v2.3-blue.svg)](https://github.com/qqzhoufan/fishtools)
 [![Author](https://img.shields.io/badge/author-咸鱼银河-orange.svg)](https://github.com/qqzhoufan)
 [![Language](https://img.shields.io/badge/language-Bash-brightgreen.svg)](https://www.gnu.org/software/bash/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -11,12 +11,12 @@
 
 ## 📖 快速上手
 
-在您的VPS上，仅需一行命令即可启动“咸鱼工具箱”：
+在您的VPS上，仅需一行命令即可启动“咸鱼工具箱”。
 
 ```bash
-curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fishtools.sh | bash
+curl -sL [https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fishtools.sh](https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fishtools.sh) | bash
 ```
-> 无需安装，即刻运行。所有功能均通过交互式菜单选择，对新手友好。
+> **高兼容性命令：** 此命令使用管道，确保在几乎所有Linux环境中都能稳定运行。
 
 ---
 
@@ -63,7 +63,7 @@ curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fishtools.sh
 
 ## 🧑‍💻 开发者指南：如何扩充您的“精选项目”
 
-作为本脚本的维护者 **(咸鱼银河)**，您可以非常轻松地扩充您的应用商店。现在的工作流已大大简化：
+作为本脚本的维护者 **(咸鱼银河)**，您可以非常轻松地扩充您的应用商店。
 
 **第一步：在本地项目中添加预设文件**
 
@@ -79,34 +79,21 @@ curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fishtools.sh
     └── presets/
         ├── homepage/
         │   └── docker-compose.yml
-        ├── portainer-ce/
-        │   └── docker-compose.yml
-        └── alist/  <-- 新增的项目
-            └── docker-compose.yml
+        └── ...
     ```
 
 **第二步：修改 `fishtools.sh`**
 
 1.  打开脚本，找到 `show_preset_deployment_menu` 函数。
-2.  在菜单 `echo` 列表中增加一行，用于显示新项目：
-    ```bash
-    echo "5. Alist (多存储文件列表程序)"
-    ```
-3.  在 `case` 逻辑中增加对应的处理分支：
-    ```bash
-    case $preset_choice in
-        ...
-        5) deploy_preset_project "alist" ;; # "alist" 必须和您创建的文件夹名一致
-        ...
-    esac
-    ```
+2.  在菜单 `echo` 列表中增加一行，用于显示新项目。
+3.  在 `case` 逻辑中增加对应的处理分支。
 
 **第三步：提交更改**
 
 将您所有的修改（包括新增的`presets`文件和改动的`fishtools.sh`）提交到GitHub。
 ```bash
 git add .
-git commit -m "feat: Add alist to presets"
+git commit -m "feat: Add New-App to presets"
 git push
 ```
 完成！所有用户即可立即看到并部署您的新项目。

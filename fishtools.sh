@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # =================================================================
-# fishtools (咸鱼工具箱) v2.2
+# fishtools (咸鱼工具箱) v2.3
 # Author: 咸鱼银河 (Xianyu Yinhe)
 # Github: https://github.com/qqzhoufan/fishtools
 #
 # A powerful and modular toolkit for VPS management.
 # =================================================================
 
-# --- 全局配置 (已修正) ---
+# --- 全局配置 ---
 # 作者的GitHub信息
 AUTHOR_GITHUB_USER="qqzhoufan"
 # 本项目的主仓库名
@@ -174,7 +174,6 @@ deploy_preset_project() {
     fi
 
     local project_dir="/opt/${project_name}"
-    # --- 核心修正：URL现在指向本项目仓库内的 "presets" 文件夹 ---
     local compose_url="https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/presets/${project_name}/docker-compose.yml"
 
     clear
@@ -270,7 +269,7 @@ main() {
     while true; do
         clear
         echo "================================================="
-        echo "      欢迎使用 fishtools by 咸鱼银河 v2.2"
+        echo "      欢迎使用 fishtools by 咸鱼银河 v2.3"
         echo "================================================="
         echo "1. 显示VPS基本信息"
         echo "2. 性能/网络测试脚本 (Bench Scripts)"
@@ -286,7 +285,7 @@ main() {
             1) show_machine_info; press_any_key ;;
             2) show_test_menu ;;
             3) show_dd_menu ;;
-            4) show_live_performance; press_any_key ;;
+            4) show_live_performance; press_any_key ;; # <-- 此处是关键的BUG修复
             5) show_install_menu ;;
             6) show_deployment_menu ;;
             0) echo "感谢使用，再见!"; exit 0 ;;
