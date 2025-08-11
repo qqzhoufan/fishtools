@@ -14,7 +14,7 @@
 在您的VPS上，仅需一行命令即可启动“咸鱼工具箱”：
 
 ```bash
-bash <(curl -sL [https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fishtools.sh](https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fishtools.sh))
+curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fishtools.sh | bash
 ```
 > 无需安装，即刻运行。所有功能均通过交互式菜单选择，对新手友好。
 
