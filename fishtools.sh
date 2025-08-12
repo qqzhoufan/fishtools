@@ -238,7 +238,6 @@ show_dd_menu() {
                 press_any_key
                 bash reinstall.sh
                 rm -f reinstall.sh
-                # DD系统后机器会失联，这里不再需要 press_any_key
                 ;;
             2)
                 clear
@@ -261,7 +260,6 @@ show_dd_menu() {
                     log_error "脚本下载失败！"
                     press_any_key
                 fi
-                # DD系统后机器会失联，这里不再需要 press_any_key
                 ;;
             0)
                 break
@@ -292,7 +290,7 @@ show_optimization_menu() {
                 log_info "正在下载并执行 BBR/TCP 优化脚本..."
                 if curl -sL http://sh.nekoneko.cloud/tools.sh -o tools.sh; then
                     bash tools.sh
-                    rm -f tools.sh # 执行后清理
+                    rm -f tools.sh
                 else
                     log_error "下载脚本失败！"
                 fi
@@ -303,7 +301,7 @@ show_optimization_menu() {
                 log_info "正在下载并执行 SWAP 管理脚本..."
                 if curl -sL https://www.moerats.com/usr/shell/swap.sh -o swap.sh; then
                     bash swap.sh
-                    rm -f swap.sh # 执行后清理
+                    rm -f swap.sh
                 else
                     log_error "下载脚本失败！"
                 fi
@@ -314,8 +312,8 @@ show_optimization_menu() {
                 log_info "正在下载并执行 WARP 管理脚本..."
                 log_warning "此脚本将接管交互，请根据其提示操作。"
                 if curl -sL "https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh" -o menu.sh; then
-                    bash menu.sh # 直接运行，让用户在脚本自带的菜单中选择
-                    rm -f menu.sh # 执行后清理
+                    bash menu.sh
+                    rm -f menu.sh
                 else
                     log_error "下载脚本失败！"
                 fi
@@ -335,47 +333,135 @@ show_optimization_menu() {
 # 核心功能：部署单个预设项目的逻辑
 deploy_preset_project() {
     local project_name="$1"
-    if [[ -z "$project_name" ]]; then log_error "内部错误。"; return; fi
+    if [[ -z "$project_name" ]]; then log_error "内部错误。"; return 1; fi
     local project_dir="/opt/${project_name}"; local dest_file="${project_dir}/docker-compose.yml"
     local url_yaml="https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/presets/${project_name}/docker-compose.yaml"
     local url_yml="https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/presets/${project_name}/docker-compose.yml"
     clear; log_info "即将部署精选项目: ${project_name}"; log_info "目标目录: ${project_dir}"; echo ""
-    if ! command -v docker &>/dev/null || ! docker compose version &>/dev/null; then log_error "Docker或Compose未安装。"; return; fi
+    if ! command -v docker &>/dev/null || ! docker compose version &>/dev/null; then log_error "Docker或Compose未安装。"; return 1; fi
     read -p "确认部署? (y/n): " confirm </dev/tty
-    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then log_info "操作已取消。"; return; fi
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then log_info "操作已取消。"; return 0; fi
     log_info "正在创建项目目录..."; sudo mkdir -p "$project_dir"; log_info "正在下载配置文件..."
     if sudo curl -sLf -o "${dest_file}" "${url_yaml}"; then log_success "成功下载 docker-compose.yaml。"
     else
-        log_warning "未找到 docker-compose.yaml，正在尝试 docker-compose.yml ...";
+        log_warning "未找到 docker-compose.yaml，正在尝试 docker-compose.yml ..."
         if sudo curl -sLf -o "${dest_file}" "${url_yml}"; then log_success "成功下载 docker-compose.yml。"
         else log_error "下载失败！在 'presets/${project_name}/' 目录下，既未找到 .yaml 文件，也未找到 .yml 文件。"; sudo rm -rf "$project_dir"; return 1; fi
     fi
-    log_info "启动项目中..."; cd "$project_dir" || return
-    sudo docker compose up -d; if [[ $? -eq 0 ]]; then log_success "项目 '$project_name' 已成功部署！"; else log_error "项目部署失败！"; fi
+    log_info "启动项目中..."; cd "$project_dir" || return 1
+    sudo docker compose up -d; if [[ $? -eq 0 ]]; then log_success "项目 '$project_name' 已成功部署！"; else log_error "项目部署失败！"; return 1; fi
+}
+
+# 新增功能：安装后提示信息
+show_post_install_message() {
+    local project_name="$1"
+    echo ""
+    case $project_name in
+        "qbittorrent")
+            log_warning "qBittorrent 安装成功！默认登录信息如下："
+            log_warning "用户名: admin"
+            log_warning "请运行以下命令查看您的随机密码："
+            echo -e "${YELLOW}sudo docker logs qbittorrent${NC}"
+            ;;
+        "moontv")
+            log_warning "MoonTV 安装成功！默认登录信息如下："
+            log_warning "用户名: admin"
+            log_warning "密码: admin_password"
+            log_warning "如有必要请进入 /opt/moontv/ 目录手动修改配置。"
+            ;;
+        "nginx-proxy-manager")
+            log_warning "Nginx Proxy Manager 安装成功！初始登录信息如下："
+            log_warning "邮箱: admin@example.com"
+            log_warning "密码: changeme"
+            log_warning "首次登录后请立即修改密码和邮箱！"
+            ;;
+        *)
+            # 其他项目没有特殊提示
+            ;;
+    esac
 }
 
 # 子菜单：显示预设项目
 show_preset_deployment_menu() {
-    while true; do clear; echo "======== 一键部署精选项目 (by 咸鱼银河) ========"; echo "1. Portainer-CE (Docker管理面板)"; echo "2. Homepage (精美起始页)"; echo "3. AdGuard-Home (去广告DNS)"; echo "4. Nginx-Proxy-Manager (Nginx反代神器)"; echo "----------------------------------------------"; echo "0. 返回上一级菜单"; echo "=============================================="; read -p "请选择您要部署的项目: " preset_choice </dev/tty;
-    case $preset_choice in
-        1) deploy_preset_project "portainer-ce"; press_any_key ;; 2) deploy_preset_project "homepage"; press_any_key ;; 3) deploy_preset_project "adguard-home"; press_any_key ;; 4) deploy_preset_project "nginx-proxy-manager"; press_any_key ;; 0) break ;; *) log_error "无效输入。"; press_any_key ;;
-    esac; done
+    while true; do
+        clear
+        echo "======== 一键部署精选项目 (by 咸鱼银河) ========"
+        echo "1. Homepage (精美起始页)"
+        echo "2. Nginx-Proxy-Manager (Nginx反代神器)"
+        echo "3. Navidrome (音乐服务器)"
+        echo "4. qBittorrent (下载器)"
+        echo "5. MoonTV (观影聚合)"
+        echo "----------------------------------------------"
+        echo "0. 返回上一级菜单"
+        echo "=============================================="
+        read -p "请选择您要部署的项目 [0-5]: " preset_choice </dev/tty
+        
+        local project_to_deploy=""
+        case $preset_choice in
+            1) project_to_deploy="homepage" ;;
+            2) project_to_deploy="nginx-proxy-manager" ;;
+            3) project_to_deploy="navidrome" ;;
+            4) project_to_deploy="qbittorrent" ;;
+            5) project_to_deploy="moontv" ;;
+            0) break ;;
+            *) log_error "无效输入。"; press_any_key; continue ;;
+        esac
+
+        if [[ -n "$project_to_deploy" ]]; then
+            deploy_preset_project "$project_to_deploy"
+            show_post_install_message "$project_to_deploy"
+            press_any_key
+        fi
+    done
 }
 
 # 子菜单：部署功能主菜单
 show_deployment_menu() {
-    while true; do clear; echo "=========== Docker Compose 部署菜单 ==========="; echo "1. 一键部署精选项目 (推荐)"; echo "2. 从自定义GitHub仓库部署 (高级)"; echo "0. 返回主菜单"; echo "==========================================="; read -p "请选择部署方式 [0-2]: " deploy_choice </dev/tty;
-    case $deploy_choice in
-        1) show_preset_deployment_menu ;; 2) log_error "功能占位，暂未实现。"; press_any_key ;; 0) break ;; *) log_error "无效输入。"; press_any_key ;;
-    esac; done
+    while true; do
+        clear
+        echo "=========== Docker Compose 部署菜单 ==========="
+        echo "1. 一键部署精选项目 (推荐)"
+        echo "2. 从自定义GitHub仓库部署 (高级)"
+        echo "0. 返回主菜单"
+        echo "==========================================="
+        read -p "请选择部署方式 [0-2]: " deploy_choice </dev/tty
+        case $deploy_choice in
+            1) show_preset_deployment_menu ;;
+            2) log_error "功能占位，暂未实现。"; press_any_key ;;
+            0) break ;;
+            *) log_error "无效输入。"; press_any_key ;;
+        esac
+    done
 }
 
 # 主菜单和执行逻辑
 main() {
-    while true; do clear; echo "================================================="; echo "      欢迎使用 fishtools by 咸鱼银河 v1.0"; echo "================================================="; echo "1. 系统状态监控"; echo "2. 性能/网络测试"; echo "3. DD系统/重装系统"; echo "4. 常用软件安装"; echo "5. Docker Compose 项目部署"; echo "6. VPS 优化"; echo "0. 退出脚本"; echo "-------------------------------------------------"; read -p "请输入您的选择 [0-6]: " main_choice </dev/tty;
-    case $main_choice in
-        1) show_status_menu ;; 2) show_test_menu ;; 3) show_dd_menu ;; 4) show_install_menu ;; 5) show_deployment_menu ;; 6) show_optimization_menu ;; 0) echo "感谢使用，再见!"; exit 0 ;; *) log_error "无效输入，请重新选择。"; press_any_key ;;
-    esac; done
+    while true; do
+        clear
+        echo "================================================="
+        echo "      欢迎使用 fishtools by 咸鱼银河 v1.0"
+        echo "================================================="
+        echo "1. 系统状态监控"
+        echo "2. 性能/网络测试"
+        echo "3. DD系统/重装系统"
+        echo "4. 常用软件安装"
+        echo "5. Docker Compose 项目部署"
+        echo "6. VPS 优化"
+        echo "0. 退出脚本"
+        echo "-------------------------------------------------"
+        read -p "请输入您的选择 [0-6]: " main_choice </dev/tty
+
+        case $main_choice in
+            1) show_status_menu ;;
+            2) show_test_menu ;;
+            3) show_dd_menu ;;
+            4) show_install_menu ;;
+            5) show_deployment_menu ;;
+            6) show_optimization_menu ;;
+            0) echo "感谢使用，再见!"; exit 0 ;;
+            *) log_error "无效输入，请重新选择。"; press_any_key ;;
+        esac
+    done
 }
 
 # 脚本启动入口
