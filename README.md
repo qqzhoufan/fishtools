@@ -1,6 +1,6 @@
 # fishtools (咸鱼工具箱) 🧰
 
-[![Version](https://img.shields.io/badge/version-v3.1-blue.svg)](https://github.com/qqzhoufan/fishtools)
+[![Version](https://img.shields.io/badge/version-v3.2-blue.svg)](https://github.com/qqzhoufan/fishtools)
 [![Author](https://img.shields.io/badge/author-咸鱼银河-orange.svg)](https://github.com/qqzhoufan)
 [![Language](https://img.shields.io/badge/language-Bash-brightgreen.svg)](https://www.gnu.org/software/bash/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -26,39 +26,35 @@ curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fishtools.sh
 `fishtools` 将所有核心功能都整合到了主菜单中，让您可以轻松访问。
 
 ### 1. 系统状态监控 (System Status Monitoring)
-
 通过一个独立的子菜单，随时掌握您服务器的健康状况。
-
-* **显示VPS基本信息:** 提供一份服务器的静态“体检报告”，包含CPU型号、核心数、内存总量、操作系统与内核版本等。
-* **显示VPS实时性能:** 获取服务器当前的动态负载快照，包含CPU、内存、硬盘的实时使用率。
+* **显示VPS基本信息:** 提供服务器的静态“体检报告”。
+* **显示VPS实时性能:** 获取服务器当前的CPU、内存、硬盘动态负载快照。
 
 ### 2. 性能与网络测试 (Bench & Network Tests)
-
-无需再到处寻找测试脚本，我们为您内置了行业主流的测试工具。
-
-* **Superbench:** 全面测试VPS的硬件信息、I/O性能以及到国内外的网络速度。
-* **Lemonbench:** 另一款强大的综合性测试工具，提供详尽的硬件、网络及性能评估报告。
+内置行业主流的测试工具，一键评估VPS的综合性能和网络状况。
+* **Superbench:** 全面测试硬件、I/O及国内外网络速度。
+* **Lemonbench:** 另一款强大的综合性测试工具。
 
 ### 3. 系统维护工具 (System Maintenance Tools)
-
 提供一些高阶的系统管理功能。
-
 * **DD系统/重装系统:**
-  > **警告：** 此功能风险极高！它会完全擦除您服务器的现有数据。请仅在您完全理解其后果的情况下使用，并务必提前备份好所有重要数据。
+  > **警告：** 此功能风险极高！会完全擦除服务器数据。
 
 ### 4. 常用软件安装 (Essential Software Installation)
-
-通过子菜单，一键安装和配置最常用的服务器软件，为部署应用打下基础。
-
-* **Docker & Docker Compose:** 业界领先的容器化解决方案。
+一键安装和配置最常用的服务器软件。
+* **Docker & Docker Compose:** 容器化解决方案。
 * **Nginx:** 高性能Web服务器和反向代理。
-* **Caddy:** 新一代Web服务器，以其自动化的HTTPS功能而闻名。
+* **Caddy:** 自动HTTPS的新一代Web服务器。
 
 ### 5. Docker 应用部署 (Docker Application Deployment) ✨
+一个小型“应用商店”，也是 `fishtools` 的核心特色。
+* **一键部署精选项目 (推荐):** 从作者预设的菜单中选择热门应用，全自动下载、配置和启动。
 
-这不仅仅是一个功能，更是一个小型的“应用商店”，也是 `fishtools` 的核心特色。
-
-* **一键部署精选项目 (推荐):** 为普通用户设计，无需任何配置！直接从菜单中选择作者预设好的热门应用（如 `Portainer`, `Homepage` 等），即可全自动下载、配置和启动。
+### 6. VPS 优化 (VPS Optimization)
+提供一系列脚本来优化您的VPS性能和网络。
+* **开启BBR加速和TCP调优:** 改善网络拥塞算法，提升网络速度。
+* **添加/管理 SWAP:** 在内存不足的机器上，增加虚拟内存以防止应用崩溃。
+* **安装/管理 WARP:** 使用Cloudflare的WARP服务，为您的VPS增加IPv4或IPv6网络支持。
 
 ---
 

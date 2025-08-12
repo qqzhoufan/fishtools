@@ -2,7 +2,7 @@
 set -eo pipefail
 
 # =================================================================
-# fishtools (咸鱼工具箱) v3.1
+# fishtools (咸鱼工具箱) v3.2
 # Author: 咸鱼银河 (Xianyu Yinhe)
 # Github: https://github.com/qqzhoufan/fishtools
 #
@@ -63,7 +63,7 @@ show_live_performance() {
     local mem_info
     mem_info=$(free -m | awk 'NR==2{printf "总计: %s MB / 已用: %s MB / 剩余: %s MB", $2, $3, $4}')
     echo "内存使用情况: $mem_info"
-
+    
     local disk_info
     disk_info=$(df -h / | awk 'NR==2{printf "总计: %s / 已用: %s (%s) / 剩余: %s", $2, $3, $5, $4}')
     echo "硬盘空间 (根目录): $disk_info"
@@ -124,7 +124,7 @@ show_install_menu() {
                 else
                     log_success "Docker 已安装。"
                 fi
-
+                
                 if ! docker compose version &>/dev/null; then
                     sudo apt-get update
                     sudo apt-get install -y docker-compose-plugin
@@ -223,6 +223,61 @@ show_dd_menu() {
     done
 }
 
+# 子菜单: VPS优化
+show_optimization_menu() {
+    while true; do
+        clear
+        echo "=============== VPS 优化子菜单 ==============="
+        echo "1. 开启BBR加速和TCP调优"
+        echo "2. 添加/管理 SWAP 虚拟内存"
+        echo "3. 安装/管理 WARP"
+        echo "0. 返回主菜单"
+        echo "=============================================="
+        read -p "请输入您的选择 [0-3]: " opt_choice </dev/tty
+
+        case $opt_choice in
+            1)
+                log_info "正在下载并执行 BBR/TCP 优化脚本..."
+                if curl -sL http://sh.nekoneko.cloud/tools.sh -o tools.sh; then
+                    bash tools.sh
+                    rm -f tools.sh # 执行后清理
+                else
+                    log_error "下载脚本失败！"
+                fi
+                press_any_key
+                ;;
+            2)
+                log_info "正在下载并执行 SWAP 管理脚本..."
+                if curl -sL https://www.moerats.com/usr/shell/swap.sh -o swap.sh; then
+                    bash swap.sh
+                    rm -f swap.sh # 执行后清理
+                else
+                    log_error "下载脚本失败！"
+                fi
+                press_any_key
+                ;;
+            3)
+                log_info "正在下载并执行 WARP 管理脚本..."
+                log_warning "此脚本将接管交互，请根据其提示操作。"
+                if curl -sL "https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh" -o menu.sh; then
+                    bash menu.sh # 直接运行，让用户在脚本自带的菜单中选择
+                    rm -f menu.sh # 执行后清理
+                else
+                    log_error "下载脚本失败！"
+                fi
+                press_any_key
+                ;;
+            0)
+                break
+                ;;
+            *)
+                log_error "无效输入。"
+                press_any_key
+                ;;
+        esac
+    done
+}
+
 # 核心功能：部署单个预设项目的逻辑
 deploy_preset_project() {
     local project_name="$1"
@@ -235,7 +290,7 @@ deploy_preset_project() {
     local dest_file="${project_dir}/docker-compose.yml"
     local url_yaml="https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/presets/${project_name}/docker-compose.yaml"
     local url_yml="https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/presets/${project_name}/docker-compose.yml"
-
+    
     clear
     log_info "即将部署精选项目: ${project_name}"
     log_info "目标目录: ${project_dir}"
@@ -330,16 +385,17 @@ main() {
     while true; do
         clear
         echo "================================================="
-        echo "      欢迎使用 fishtools by 咸鱼银河 v3.1"
+        echo "      欢迎使用 fishtools by 咸鱼银河 v3.2"
         echo "================================================="
         echo "1. 系统状态监控"
         echo "2. 性能/网络测试"
         echo "3. DD系统/重装系统"
         echo "4. 常用软件安装"
         echo "5. Docker Compose 项目部署"
+        echo "6. VPS 优化"
         echo "0. 退出脚本"
         echo "-------------------------------------------------"
-        read -p "请输入您的选择 [0-5]: " main_choice </dev/tty
+        read -p "请输入您的选择 [0-6]: " main_choice </dev/tty
 
         case $main_choice in
             1)
@@ -356,6 +412,9 @@ main() {
                 ;;
             5)
                 show_deployment_menu
+                ;;
+            6)
+                show_optimization_menu
                 ;;
             0)
                 echo "感谢使用，再见!"
