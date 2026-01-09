@@ -250,45 +250,98 @@ show_live_performance() {
     draw_footer 50
 }
 
-# 网络流量监控
+# 网络流量监控（实时刷新）
 show_network_traffic() {
-    clear
-    draw_title_line "网络流量监控" 50
-    echo ""
-    log_info "正在监控网络流量（5秒采样）..."
-    echo ""
+    # 获取所有活动网卡（排除 lo）
+    local interfaces=$(ip -o link show | awk -F': ' '{print $2}' | grep -v lo | tr '\n' ' ')
     
-    # 获取主要网卡名称
-    local interface=$(ip route | grep default | awk '{print $5}' | head -1)
-    if [[ -z "$interface" ]]; then
-        interface="eth0"
+    # 如果没有找到网卡，使用默认的 eth0
+    if [[ -z "$interfaces" ]]; then
+        interfaces="eth0"
     fi
     
-    # 第一次采样
-    local rx1=$(cat /proc/net/dev | grep "$interface" | awk '{print $2}')
-    local tx1=$(cat /proc/net/dev | grep "$interface" | awk '{print $10}')
+    # 获取默认网关所在的网卡（公网网卡）
+    local default_iface=$(ip route | grep default | awk '{print $5}' | head -1)
     
-    sleep 5
+    # 初始化上一次的采样数据
+    declare -A rx_prev tx_prev
+    for iface in $interfaces; do
+        rx_prev[$iface]=$(cat /proc/net/dev 2>/dev/null | grep -w "$iface" | awk '{print $2}')
+        tx_prev[$iface]=$(cat /proc/net/dev 2>/dev/null | grep -w "$iface" | awk '{print $10}')
+    done
     
-    # 第二次采样
-    local rx2=$(cat /proc/net/dev | grep "$interface" | awk '{print $2}')
-    local tx2=$(cat /proc/net/dev | grep "$interface" | awk '{print $10}')
-    
-    # 计算速率 (bytes/s -> KB/s)
-    local rx_rate=$(( (rx2 - rx1) / 5 / 1024 ))
-    local tx_rate=$(( (tx2 - tx1) / 5 / 1024 ))
-    
-    # 计算总流量
-    local rx_total=$(echo "scale=2; $rx2 / 1024 / 1024 / 1024" | bc)
-    local tx_total=$(echo "scale=2; $tx2 / 1024 / 1024 / 1024" | bc)
-    
-    echo -e "  ${CYAN}网卡名称${NC}      │ ${WHITE}$interface${NC}"
-    echo -e "  ${CYAN}下载速度${NC}      │ ${GREEN}↓ ${rx_rate} KB/s${NC}"
-    echo -e "  ${CYAN}上传速度${NC}      │ ${YELLOW}↑ ${tx_rate} KB/s${NC}"
-    echo -e "  ${CYAN}累计下载${NC}      │ ${rx_total} GB"
-    echo -e "  ${CYAN}累计上传${NC}      │ ${tx_total} GB"
-    echo ""
-    draw_footer 50
+    # 实时刷新循环
+    while true; do
+        clear
+        draw_title_line "网络流量监控 (实时)" 50
+        echo ""
+        echo -e "  ${WHITE}${BOLD}网卡流量统计${NC}  ${DIM}(每2秒刷新，按 q 退出)${NC}"
+        echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+        
+        for iface in $interfaces; do
+            # 获取当前数据
+            local rx_curr=$(cat /proc/net/dev 2>/dev/null | grep -w "$iface" | awk '{print $2}')
+            local tx_curr=$(cat /proc/net/dev 2>/dev/null | grep -w "$iface" | awk '{print $10}')
+            
+            # 跳过无效数据
+            if [[ -z "$rx_curr" || -z "$tx_curr" || "$rx_curr" == "0" ]]; then
+                continue
+            fi
+            
+            # 获取上次数据
+            local rx_last=${rx_prev[$iface]:-$rx_curr}
+            local tx_last=${tx_prev[$iface]:-$tx_curr}
+            
+            # 计算速率 (bytes/2s -> KB/s)
+            local rx_diff=$((rx_curr - rx_last))
+            local tx_diff=$((tx_curr - tx_last))
+            local rx_rate=$((rx_diff / 2 / 1024))
+            local tx_rate=$((tx_diff / 2 / 1024))
+            
+            # 更新上次数据
+            rx_prev[$iface]=$rx_curr
+            tx_prev[$iface]=$tx_curr
+            
+            # 计算总流量 (使用 awk 进行浮点运算)
+            local rx_total=$(awk "BEGIN {printf \"%.2f\", $rx_curr / 1024 / 1024 / 1024}")
+            local tx_total=$(awk "BEGIN {printf \"%.2f\", $tx_curr / 1024 / 1024 / 1024}")
+            
+            # 判断是公网还是内网网卡
+            local iface_type=""
+            if [[ "$iface" == "$default_iface" ]]; then
+                iface_type="${MAGENTA}[公网]${NC}"
+            else
+                iface_type="${GRAY}[内网]${NC}"
+            fi
+            
+            # 速率单位自动调整
+            local rx_display tx_display
+            if [[ $rx_rate -ge 1024 ]]; then
+                rx_display=$(awk "BEGIN {printf \"%.2f MB/s\", $rx_rate / 1024}")
+            else
+                rx_display="${rx_rate} KB/s"
+            fi
+            if [[ $tx_rate -ge 1024 ]]; then
+                tx_display=$(awk "BEGIN {printf \"%.2f MB/s\", $tx_rate / 1024}")
+            else
+                tx_display="${tx_rate} KB/s"
+            fi
+            
+            echo ""
+            echo -e "  ${CYAN}${BOLD}$iface${NC} $iface_type"
+            echo -e "    ${GREEN}↓ 下载${NC}  ${rx_display}  │  累计 ${rx_total} GB"
+            echo -e "    ${YELLOW}↑ 上传${NC}  ${tx_display}  │  累计 ${tx_total} GB"
+        done
+        
+        echo ""
+        draw_footer 50
+        
+        # 等待2秒，期间检测是否按下 q 键退出
+        read -t 2 -n 1 key </dev/tty 2>/dev/null || true
+        if [[ "$key" == "q" || "$key" == "Q" ]]; then
+            break
+        fi
+    done
 }
 
 # 进程管理
@@ -352,14 +405,14 @@ show_open_ports() {
             gsub(/".*/, "", proc)
             if (proc == "") proc = "-"
             printf "  %-10s %-10s %s\n", port, "LISTEN", proc
-        }' | sort -t' ' -k1 -n | uniq
+        }' | sort -t' ' -k1 -n | uniq || true
     else
         netstat -tlnp 2>/dev/null | grep LISTEN | awk '{
             split($4, a, ":")
             port = a[length(a)]
             proc = $7
             printf "  %-10s %-10s %s\n", port, "LISTEN", proc
-        }' | sort -t' ' -k1 -n | uniq
+        }' | sort -t' ' -k1 -n | uniq || true
     fi
     
     echo ""
@@ -375,14 +428,14 @@ show_open_ports() {
             gsub(/".*/, "", proc)
             if (proc == "") proc = "-"
             if (port != "*") printf "  %-10s %-10s %s\n", port, "UDP", proc
-        }' | sort -t' ' -k1 -n | uniq
+        }' | sort -t' ' -k1 -n | uniq || true
     else
         netstat -ulnp 2>/dev/null | awk '{
             split($4, a, ":")
             port = a[length(a)]
             proc = $6
             if (NR > 2) printf "  %-10s %-10s %s\n", port, "UDP", proc
-        }' | sort -t' ' -k1 -n | uniq
+        }' | sort -t' ' -k1 -n | uniq || true
     fi
     
     echo ""
@@ -464,6 +517,87 @@ show_install_menu() {
     done
 }
 
+# 子菜单: 路由测试
+show_route_menu() {
+    while true; do
+        clear
+        draw_title_line "路由测试" 50
+        echo ""
+        draw_menu_item "1" "🔙" "回程路由测试 (VPS → 中国)"
+        draw_menu_item "2" "🔜" "去程路由测试 (中国 → VPS)"
+        echo ""
+        draw_separator 50
+        draw_menu_item "0" "🔙" "返回上级菜单"
+        draw_footer 50
+        echo ""
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-2]: )" route_choice </dev/tty
+        
+        case $route_choice in
+            1)
+                clear
+                draw_title_line "回程路由测试" 50
+                echo ""
+                log_info "正在下载回程路由测试脚本..."
+                log_info "此脚本将检测从 VPS 到中国各地区的回程路由线路"
+                echo ""
+                if curl -sL https://raw.githubusercontent.com/zhanghanyun/backtrace/main/install.sh -o backtrace.sh 2>/dev/null; then
+                    log_success "下载成功，开始执行..."
+                    echo ""
+                    chmod +x backtrace.sh && bash backtrace.sh || true
+                    rm -f backtrace.sh
+                else
+                    log_error "脚本下载失败！"
+                fi
+                press_any_key
+                ;;
+            2)
+                clear
+                draw_title_line "去程路由测试" 50
+                echo ""
+                log_info "去程路由测试说明："
+                log_info "去程 = 从中国访问您的 VPS 时经过的路由"
+                log_info "需要在中国的设备上安装 NextTrace 并追踪到您的 VPS IP"
+                echo ""
+                
+                # 显示当前VPS的IP
+                local vps_ip=$(curl -4 -s --max-time 5 ip.sb 2>/dev/null || curl -4 -s --max-time 5 ifconfig.me 2>/dev/null)
+                if [[ -n "$vps_ip" ]]; then
+                    echo -e "  ${WHITE}${BOLD}您的 VPS IP: ${CYAN}${vps_ip}${NC}"
+                    echo ""
+                fi
+                
+                log_info "正在安装 NextTrace 路由追踪工具..."
+                echo ""
+                
+                # 使用官方安装脚本
+                if curl -sL https://raw.githubusercontent.com/nxtrace/NTrace-core/main/nt_install.sh -o nt_install.sh 2>/dev/null; then
+                    bash nt_install.sh || true
+                    rm -f nt_install.sh
+                    echo ""
+                    log_success "NextTrace 安装完成！"
+                    echo ""
+                    echo -e "  ${WHITE}${BOLD}使用方法:${NC}"
+                    echo -e "  ${CYAN}nexttrace ${vps_ip:-<目标IP>}${NC}  - 从本机追踪到目标"
+                    echo -e "  ${CYAN}nexttrace -T <域名>${NC}      - TCP 模式追踪"
+                    echo -e "  ${CYAN}nexttrace -M${NC}             - 交互式菜单"
+                    echo ""
+                    echo -e "  ${YELLOW}提示: 在中国的设备上运行 nexttrace ${vps_ip:-<您的VPS IP>} 可测试去程${NC}"
+                else
+                    log_error "脚本下载失败！"
+                fi
+                press_any_key
+                ;;
+            0)
+                break
+                ;;
+            *)
+                log_error "无效输入。"
+                press_any_key
+                ;;
+        esac
+    done
+}
+
 # 子菜单: 性能/网络测试脚本
 show_test_menu() {
     while true; do
@@ -471,15 +605,14 @@ show_test_menu() {
         draw_title_line "性能/网络测试" 50
         echo ""
         draw_menu_item "1" "🚀" "融合怪 (ecs.sh) 综合测试"
-        draw_menu_item "2" "🔍" "IP 质量检测"
-        draw_menu_item "3" "📺" "流媒体解锁测试"
-        draw_menu_item "4" "🛤️" "回程路由测试"
+        draw_menu_item "2" "🐟" "咸鱼 IP 检测 (原创)"
+        draw_menu_item "3" "🛤️" "路由测试 (回程/去程)"
         echo ""
         draw_separator 50
         draw_menu_item "0" "🔙" "返回主菜单"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-4]: )" test_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-3]: )" test_choice </dev/tty
         case $test_choice in
             1)
                 clear
@@ -504,45 +637,29 @@ show_test_menu() {
                 ;;
             2)
                 clear
-                draw_title_line "IP 质量检测" 50
+                draw_title_line "🐟 咸鱼 IP 检测" 50
                 echo ""
-                log_info "正在运行 IP 质量检测脚本..."
-                if bash <(curl -sL https://bash.ip.check.place); then
-                    : # 脚本执行成功
+                # 尝试使用本地脚本
+                local script_path="$(dirname "$0")/scripts/fish_ipcheck.sh"
+                if [[ -f "$script_path" ]]; then
+                    log_info "使用本地脚本..."
+                    bash "$script_path" || true
                 else
-                    log_error "脚本执行失败！"
+                    # 从 GitHub 下载
+                    log_info "正在从 GitHub 下载咸鱼 IP 检测脚本..."
+                    if curl -sL "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/scripts/fish_ipcheck.sh" -o fish_ipcheck.sh 2>/dev/null; then
+                        log_success "下载成功，开始执行..."
+                        echo ""
+                        bash fish_ipcheck.sh || true
+                        rm -f fish_ipcheck.sh
+                    else
+                        log_error "脚本下载失败！"
+                    fi
                 fi
                 press_any_key
                 ;;
             3)
-                clear
-                draw_title_line "流媒体解锁测试" 50
-                echo ""
-                log_info "正在运行流媒体解锁检测脚本..."
-                log_info "此脚本将检测 Netflix、Disney+、YouTube Premium 等平台的解锁状态"
-                echo ""
-                if bash <(curl -sL https://raw.githubusercontent.com/lmc999/RegionRestrictionCheck/main/check.sh); then
-                    : # 脚本执行成功
-                else
-                    log_warning "主链接失败，尝试备用链接..."
-                    bash <(curl -sL https://cdn.jsdelivr.net/gh/lmc999/RegionRestrictionCheck@main/check.sh) || log_error "脚本执行失败！"
-                fi
-                press_any_key
-                ;;
-            4)
-                clear
-                draw_title_line "回程路由测试" 50
-                echo ""
-                log_info "正在运行回程路由测试脚本..."
-                log_info "此脚本将检测到中国各地区的回程路由线路"
-                echo ""
-                if curl -sL https://raw.githubusercontent.com/zhanghanyun/backtrace/main/install.sh -o backtrace.sh; then
-                    chmod +x backtrace.sh && bash backtrace.sh
-                    rm -f backtrace.sh
-                else
-                    log_error "脚本下载失败！"
-                fi
-                press_any_key
+                show_route_menu
                 ;;
             0)
                 break

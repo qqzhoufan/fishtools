@@ -4,7 +4,7 @@
 
 ### 咸鱼工具箱
 
-[![Version](https://img.shields.io/badge/version-v1.0-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
+[![Version](https://img.shields.io/badge/version-v1.1-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
 [![Author](https://img.shields.io/badge/author-咸鱼银河-orange.svg?style=for-the-badge)](https://github.com/qqzhoufan)
 [![Language](https://img.shields.io/badge/language-Bash-brightgreen.svg?style=for-the-badge)](https://www.gnu.org/software/bash/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
@@ -100,12 +100,21 @@ bash <(curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fisht
 
 一键运行各类专业测试脚本，全面了解 VPS 性能与网络质量。
 
-| 功能 | 脚本来源 | 说明 |
-|:---|:---|:---|
-| 🔥 融合怪测试 | [spiritLHLS/ecs](https://github.com/spiritLHLS/ecs) | CPU/内存/磁盘性能 + 全球测速 |
-| 🔍 IP 质量检测 | [ip.check.place](https://ip.check.place/) | 检测 IP 纯净度、风险评分 |
-| 📺 流媒体解锁 | [lmc999/RegionRestrictionCheck](https://github.com/lmc999/RegionRestrictionCheck) | Netflix/Disney+/YouTube 等平台解锁检测 |
-| 🛤️ 回程路由测试 | [zhanghanyun/backtrace](https://github.com/zhanghanyun/backtrace) | 检测到中国各地区的回程路由线路 |
+| 功能 | 说明 |
+|:---|:---|
+| 🔥 融合怪测试 | 集成 [spiritLHLS/ecs](https://github.com/spiritLHLS/ecs)，CPU/内存/磁盘性能 + 全球测速 |
+| 🐟 **咸鱼 IP 检测 (原创)** | 包含 IP 信息、安全检测、15+ 流媒体平台解锁检测 |
+| 🛤️ 路由测试 | 回程路由 (VPS→中国) + 去程路由 (中国→VPS) |
+
+#### 🐟 咸鱼 IP 检测 功能详情
+
+**这是 fishtools 的原创功能**，不依赖第三方脚本：
+
+| 模块 | 检测内容 |
+|:---|:---|
+| 📡 IP 信息 | IPv4/IPv6、国家、城市、ISP、ASN、时区 |
+| 🛡️ 安全检测 | DNS 服务器、IPv6 支持 |
+| 📺 流媒体解锁 | Netflix, YouTube Premium, Disney+, HBO Max, Amazon Prime, BBC iPlayer, Twitch, DAZN, Spotify, TikTok, ChatGPT, Google, Gemini, Wikipedia, Bilibili, Steam |
 
 ---
 
@@ -209,9 +218,8 @@ fishtools/
 | [ecs.sh (融合怪)](https://github.com/spiritLHLS/ecs) | spiritLHLS |
 | [reinstall.sh](https://github.com/bin456789/reinstall) | bin456789 |
 | [OsMutation.sh](https://github.com/LloydAsp/OsMutation) | LloydAsp |
-| [IP 质量检测](https://ip.check.place/) | ip.check.place |
-| [流媒体解锁检测](https://github.com/lmc999/RegionRestrictionCheck) | lmc999 |
 | [回程路由测试](https://github.com/zhanghanyun/backtrace) | zhanghanyun |
+| [NextTrace](https://github.com/nxtrace/NTrace-core) | nxtrace |
 | [BBR/TCP 优化](http://sh.nekoneko.cloud/) | nekoneko.cloud |
 | [SWAP 管理](https://www.moerats.com/) | Moerats |
 | [WARP 管理](https://gitlab.com/fscarmen/warp) | fscarmen |
