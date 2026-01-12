@@ -467,12 +467,13 @@ install_docker_menu() {
         
         draw_menu_item "1" "🌍" "使用官方源安装 (国外服务器推荐)"
         draw_menu_item "2" "🇨🇳" "使用阿里云源安装 (国内服务器推荐)"
+        draw_menu_item "3" "🗑️" "卸载 Docker"
         echo ""
         draw_separator 50
         draw_menu_item "0" "🔙" "返回上级菜单"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请选择安装方式${NC} [0-2]: )" docker_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-3]: )" docker_choice </dev/tty
         
         case $docker_choice in
             1)
@@ -513,6 +514,41 @@ install_docker_menu() {
                 docker compose version 2>/dev/null || true
                 echo ""
                 echo -e "  ${YELLOW}提示: 如需使用当前用户运行 Docker，请重新登录终端${NC}"
+                press_any_key
+                ;;
+            3)
+                clear
+                draw_title_line "卸载 Docker" 50
+                echo ""
+                if ! command -v docker &>/dev/null; then
+                    log_warning "Docker 未安装，无需卸载。"
+                    press_any_key
+                    continue
+                fi
+                echo -e "  ${RED}${BOLD}⚠ 警告：此操作将完全删除 Docker！${NC}"
+                echo ""
+                echo -e "  将会删除以下内容："
+                echo -e "    • Docker 引擎和 CLI"
+                echo -e "    • Docker Compose 插件"
+                echo -e "    • 所有容器、镜像、卷、网络"
+                echo ""
+                read -p "请输入 'yes' 确认卸载: " confirm </dev/tty
+                if [[ "$confirm" != "yes" ]]; then
+                    log_info "操作已取消。"
+                    press_any_key
+                    continue
+                fi
+                log_info "正在停止所有容器..."
+                sudo docker stop $(docker ps -aq) 2>/dev/null || true
+                log_info "正在卸载 Docker..."
+                sudo apt-get purge -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin 2>/dev/null || true
+                sudo apt-get autoremove -y
+                log_info "正在清理 Docker 数据..."
+                sudo rm -rf /var/lib/docker
+                sudo rm -rf /var/lib/containerd
+                sudo rm -rf /etc/docker
+                echo ""
+                log_success "Docker 已完全卸载！"
                 press_any_key
                 ;;
             0)
