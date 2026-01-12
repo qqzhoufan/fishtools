@@ -915,6 +915,35 @@ install_caddy_menu() {
     done
 }
 
+# ================== 反代工具子菜单 ==================
+show_proxy_menu() {
+    while true; do
+        clear
+        draw_title_line "反代工具" 50
+        echo ""
+        echo -e "  ${WHITE}${BOLD}选择您需要的反向代理工具${NC}"
+        echo ""
+        echo -e "  ${CYAN}Nginx${NC}  - 经典高性能，需手动配置 HTTPS"
+        echo -e "  ${CYAN}Caddy${NC}  - 现代化，自动 HTTPS 证书"
+        echo ""
+        draw_menu_item "1" "🌐" "Nginx 管理"
+        draw_menu_item "2" "🔒" "Caddy 管理"
+        echo ""
+        draw_separator 50
+        draw_menu_item "0" "🔙" "返回上级菜单"
+        draw_footer 50
+        echo ""
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-2]: )" proxy_choice </dev/tty
+
+        case $proxy_choice in
+            1) install_nginx_menu ;;
+            2) install_caddy_menu ;;
+            0) break ;;
+            *) log_error "无效输入。"; press_any_key ;;
+        esac
+    done
+}
+
 # ================== 常用软件安装主菜单 ==================
 show_install_menu() {
     while true; do
@@ -922,19 +951,17 @@ show_install_menu() {
         draw_title_line "常用软件安装" 50
         echo ""
         draw_menu_item "1" "🐳" "Docker 安装"
-        draw_menu_item "2" "🌐" "Nginx 管理"
-        draw_menu_item "3" "🔒" "Caddy 管理"
+        draw_menu_item "2" "🔀" "反代工具 (Nginx / Caddy)"
         echo ""
         draw_separator 50
         draw_menu_item "0" "🔙" "返回主菜单"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-3]: )" install_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-2]: )" install_choice </dev/tty
 
         case $install_choice in
             1) install_docker_menu ;;
-            2) install_nginx_menu ;;
-            3) install_caddy_menu ;;
+            2) show_proxy_menu ;;
             0) break ;;
             *) log_error "无效输入。"; press_any_key ;;
         esac
