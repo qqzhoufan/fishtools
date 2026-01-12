@@ -587,17 +587,18 @@ install_nginx_menu() {
         
         draw_menu_item "1" "📦" "安装 Nginx"
         draw_menu_item "2" "🔀" "配置反向代理"
-        draw_menu_item "3" "▶️" "启动 Nginx"
-        draw_menu_item "4" "⏹️" "停止 Nginx"
-        draw_menu_item "5" "🔄" "重启 Nginx"
-        draw_menu_item "6" "📊" "查看状态"
-        draw_menu_item "7" "🗑️" "卸载 Nginx"
+        draw_menu_item "3" "🔒" "申请 HTTPS 证书 (Certbot)"
+        draw_menu_item "4" "▶️" "启动 Nginx"
+        draw_menu_item "5" "⏹️" "停止 Nginx"
+        draw_menu_item "6" "🔄" "重启 Nginx"
+        draw_menu_item "7" "📊" "查看状态"
+        draw_menu_item "8" "🗑️" "卸载 Nginx"
         echo ""
         draw_separator 50
         draw_menu_item "0" "🔙" "返回上级菜单"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-7]: )" nginx_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-8]: )" nginx_choice </dev/tty
         
         case $nginx_choice in
             1)
@@ -652,32 +653,80 @@ EOF
                 log_success "反向代理配置完成！"
                 echo -e "  ${CYAN}域名:${NC} ${domain}"
                 echo -e "  ${CYAN}后端:${NC} ${backend}"
-                echo -e "  ${YELLOW}提示: 如需 HTTPS，请使用 certbot 申请证书${NC}"
+                echo -e "  ${YELLOW}提示: 如需 HTTPS，请选择菜单选项3申请证书${NC}"
                 press_any_key
                 ;;
             3)
+                clear
+                draw_title_line "申请 HTTPS 证书" 50
+                echo ""
+                if ! command -v nginx &>/dev/null; then
+                    log_error "Nginx 未安装，请先安装！"
+                    press_any_key
+                    continue
+                fi
+                
+                # 检测 Certbot
+                if ! command -v certbot &>/dev/null; then
+                    log_info "Certbot 未安装，正在自动安装..."
+                    sudo apt-get update
+                    sudo apt-get install -y certbot python3-certbot-nginx
+                    log_success "Certbot 安装完成！"
+                    echo ""
+                fi
+                
+                read -p "请输入域名 (如 example.com): " domain </dev/tty
+                
+                if [[ -z "$domain" ]]; then
+                    log_error "域名不能为空！"
+                    press_any_key
+                    continue
+                fi
+                
+                echo ""
+                log_info "正在为 ${domain} 申请证书..."
+                echo -e "  ${YELLOW}请确保域名已解析到此服务器 IP${NC}"
+                echo ""
+                
+                if sudo certbot --nginx -d "$domain" --non-interactive --agree-tos --register-unsafely-without-email; then
+                    echo ""
+                    log_success "HTTPS 证书申请成功！"
+                    echo -e "  ${GREEN}✓${NC} 站点已启用 HTTPS"
+                    echo -e "  ${GREEN}✓${NC} 证书将自动续期"
+                    echo -e "  ${CYAN}访问:${NC} https://${domain}"
+                else
+                    echo ""
+                    log_error "证书申请失败！"
+                    echo -e "  ${YELLOW}可能原因：${NC}"
+                    echo -e "    • 域名未解析到此服务器"
+                    echo -e "    • 80/443 端口未开放"
+                    echo -e "    • Nginx 配置中没有该域名"
+                fi
+                press_any_key
+                ;;
+            4)
                 sudo systemctl start nginx
                 log_success "Nginx 已启动"
                 press_any_key
                 ;;
-            4)
+            5)
                 sudo systemctl stop nginx
                 log_success "Nginx 已停止"
                 press_any_key
                 ;;
-            5)
+            6)
                 sudo systemctl restart nginx
                 log_success "Nginx 已重启"
                 press_any_key
                 ;;
-            6)
+            7)
                 clear
                 draw_title_line "Nginx 状态" 50
                 echo ""
                 sudo systemctl status nginx --no-pager || true
                 press_any_key
                 ;;
-            7)
+            8)
                 clear
                 draw_title_line "卸载 Nginx" 50
                 echo ""
