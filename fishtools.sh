@@ -12,7 +12,7 @@ set -eo pipefail
 # --- 全局配置 ---
 AUTHOR_GITHUB_USER="qqzhoufan"
 MAIN_REPO_NAME="fishtools"
-VERSION="v1.0"
+VERSION="v1.1"
 
 # --- 颜色和样式定义 ---
 RED='\033[0;31m'
