@@ -540,9 +540,11 @@ install_docker_menu() {
                 fi
                 log_info "正在停止所有容器..."
                 sudo docker stop $(docker ps -aq) 2>/dev/null || true
+                sudo docker rm $(docker ps -aq) 2>/dev/null || true
                 log_info "正在卸载 Docker..."
-                sudo apt-get purge -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin 2>/dev/null || true
-                sudo apt-get autoremove -y
+                # 卸载所有可能的 Docker 相关包
+                sudo apt-get purge -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin docker.io docker-compose docker-doc podman-docker 2>/dev/null || true
+                sudo apt-get autoremove -y --purge
                 log_info "正在清理 Docker 数据..."
                 sudo rm -rf /var/lib/docker
                 sudo rm -rf /var/lib/containerd
