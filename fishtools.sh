@@ -591,12 +591,13 @@ install_nginx_menu() {
         draw_menu_item "4" "⏹️" "停止 Nginx"
         draw_menu_item "5" "🔄" "重启 Nginx"
         draw_menu_item "6" "📊" "查看状态"
+        draw_menu_item "7" "🗑️" "卸载 Nginx"
         echo ""
         draw_separator 50
         draw_menu_item "0" "🔙" "返回上级菜单"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-6]: )" nginx_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-7]: )" nginx_choice </dev/tty
         
         case $nginx_choice in
             1)
@@ -676,6 +677,35 @@ EOF
                 sudo systemctl status nginx --no-pager || true
                 press_any_key
                 ;;
+            7)
+                clear
+                draw_title_line "卸载 Nginx" 50
+                echo ""
+                if ! command -v nginx &>/dev/null; then
+                    log_warning "Nginx 未安装，无需卸载。"
+                    press_any_key
+                    continue
+                fi
+                echo -e "  ${RED}${BOLD}⚠ 警告：将卸载 Nginx 及其配置文件！${NC}"
+                echo ""
+                read -p "请输入 'yes' 确认卸载: " confirm </dev/tty
+                if [[ "$confirm" != "yes" ]]; then
+                    log_info "操作已取消。"
+                    press_any_key
+                    continue
+                fi
+                log_info "正在停止 Nginx..."
+                sudo systemctl stop nginx 2>/dev/null || true
+                log_info "正在卸载 Nginx..."
+                sudo apt-get purge -y nginx nginx-common nginx-full nginx-core 2>/dev/null || true
+                sudo apt-get autoremove -y --purge
+                log_info "正在清理配置..."
+                sudo rm -rf /etc/nginx
+                sudo rm -rf /var/log/nginx
+                echo ""
+                log_success "Nginx 已完全卸载！"
+                press_any_key
+                ;;
             0)
                 break
                 ;;
@@ -714,12 +744,13 @@ install_caddy_menu() {
         draw_menu_item "4" "⏹️" "停止 Caddy"
         draw_menu_item "5" "🔄" "重启 Caddy"
         draw_menu_item "6" "📊" "查看状态"
+        draw_menu_item "7" "🗑️" "卸载 Caddy"
         echo ""
         draw_separator 50
         draw_menu_item "0" "🔙" "返回上级菜单"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-6]: )" caddy_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-7]: )" caddy_choice </dev/tty
         
         case $caddy_choice in
             1)
@@ -790,6 +821,38 @@ install_caddy_menu() {
                 draw_title_line "Caddy 状态" 50
                 echo ""
                 sudo systemctl status caddy --no-pager || true
+                press_any_key
+                ;;
+            7)
+                clear
+                draw_title_line "卸载 Caddy" 50
+                echo ""
+                if ! command -v caddy &>/dev/null; then
+                    log_warning "Caddy 未安装，无需卸载。"
+                    press_any_key
+                    continue
+                fi
+                echo -e "  ${RED}${BOLD}⚠ 警告：将卸载 Caddy 及其配置文件！${NC}"
+                echo ""
+                read -p "请输入 'yes' 确认卸载: " confirm </dev/tty
+                if [[ "$confirm" != "yes" ]]; then
+                    log_info "操作已取消。"
+                    press_any_key
+                    continue
+                fi
+                log_info "正在停止 Caddy..."
+                sudo systemctl stop caddy 2>/dev/null || true
+                log_info "正在卸载 Caddy..."
+                sudo apt-get purge -y caddy 2>/dev/null || true
+                sudo apt-get autoremove -y --purge
+                log_info "正在清理配置..."
+                sudo rm -rf /etc/caddy
+                sudo rm -rf /var/lib/caddy
+                sudo rm -rf /var/log/caddy
+                sudo rm -f /etc/apt/sources.list.d/caddy-stable.list
+                sudo rm -f /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+                echo ""
+                log_success "Caddy 已完全卸载！"
                 press_any_key
                 ;;
             0)
