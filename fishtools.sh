@@ -442,68 +442,77 @@ show_open_ports() {
     draw_footer 50
 }
 
-# 子菜单: 常用软件安装
-show_install_menu() {
+# ================== Docker 安装子菜单 ==================
+install_docker_menu() {
     while true; do
         clear
-        draw_title_line "常用软件安装" 50
+        draw_title_line "Docker 安装" 50
         echo ""
-        draw_menu_item "1" "🐳" "安装 Docker 和 Docker Compose"
-        draw_menu_item "2" "🌐" "安装 Nginx"
-        draw_menu_item "3" "🔒" "安装 Caddy"
+        
+        # 显示当前安装状态
+        if command -v docker &>/dev/null; then
+            local docker_ver=$(docker --version 2>/dev/null | awk '{print $3}' | tr -d ',')
+            echo -e "  ${GREEN}✓${NC} Docker 已安装 (${docker_ver})"
+        else
+            echo -e "  ${GRAY}○${NC} Docker 未安装"
+        fi
+        
+        if docker compose version &>/dev/null 2>&1; then
+            local compose_ver=$(docker compose version 2>/dev/null | awk '{print $4}')
+            echo -e "  ${GREEN}✓${NC} Docker Compose 已安装 (${compose_ver})"
+        else
+            echo -e "  ${GRAY}○${NC} Docker Compose 未安装"
+        fi
+        echo ""
+        
+        draw_menu_item "1" "🌍" "使用官方源安装 (国外服务器推荐)"
+        draw_menu_item "2" "🇨🇳" "使用阿里云源安装 (国内服务器推荐)"
         echo ""
         draw_separator 50
-        draw_menu_item "0" "🔙" "返回主菜单"
+        draw_menu_item "0" "🔙" "返回上级菜单"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-3]: )" install_choice </dev/tty
-
-        case $install_choice in
+        read -p "$(echo -e ${CYAN}请选择安装方式${NC} [0-2]: )" docker_choice </dev/tty
+        
+        case $docker_choice in
             1)
                 clear
-                draw_title_line "安装 Docker" 50
+                draw_title_line "使用官方源安装 Docker" 50
                 echo ""
-                log_info "正在安装 Docker 和 Docker Compose..."
-                if ! command -v docker &>/dev/null; then
-                    curl -fsSL https://get.docker.com | bash
-                    sudo usermod -aG docker "$USER"
-                    log_success "Docker 安装成功。"
-                else
-                    log_success "Docker 已安装。"
+                if command -v docker &>/dev/null; then
+                    log_warning "Docker 已安装，是否重新安装？"
+                    read -p "输入 y 继续，其他键取消: " confirm </dev/tty
+                    [[ "$confirm" != "y" && "$confirm" != "Y" ]] && continue
                 fi
-                if ! docker compose version &>/dev/null; then
-                    sudo apt-get update && sudo apt-get install -y docker-compose-plugin
-                    log_success "Docker Compose 插件安装成功。"
-                else
-                    log_success "Docker Compose 已安装。"
-                fi
+                log_info "正在从 Docker 官方源安装..."
+                curl -fsSL https://get.docker.com | bash
+                sudo usermod -aG docker "$USER" 2>/dev/null || true
                 echo ""
-                draw_footer 50
+                log_success "Docker 安装完成！"
+                docker --version
+                docker compose version 2>/dev/null || true
+                echo ""
+                echo -e "  ${YELLOW}提示: 如需使用当前用户运行 Docker，请重新登录终端${NC}"
                 press_any_key
                 ;;
             2)
                 clear
-                draw_title_line "安装 Nginx" 50
+                draw_title_line "使用阿里云源安装 Docker" 50
                 echo ""
-                log_info "正在安装 Nginx..."
-                sudo apt-get update && sudo apt-get install -y nginx
-                log_success "Nginx 安装完成。"
+                if command -v docker &>/dev/null; then
+                    log_warning "Docker 已安装，是否重新安装？"
+                    read -p "输入 y 继续，其他键取消: " confirm </dev/tty
+                    [[ "$confirm" != "y" && "$confirm" != "Y" ]] && continue
+                fi
+                log_info "正在从阿里云源安装..."
+                curl -fsSL https://get.docker.com | bash -s docker --mirror Aliyun
+                sudo usermod -aG docker "$USER" 2>/dev/null || true
                 echo ""
-                draw_footer 50
-                press_any_key
-                ;;
-            3)
-                clear
-                draw_title_line "安装 Caddy" 50
+                log_success "Docker 安装完成！"
+                docker --version
+                docker compose version 2>/dev/null || true
                 echo ""
-                log_info "正在安装 Caddy..."
-                sudo apt-get install -y debian-keyring debian-archive-keyring apt-transport-https &>/dev/null
-                curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-                curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
-                sudo apt-get update && sudo apt-get install -y caddy
-                log_success "Caddy 安装完成。"
-                echo ""
-                draw_footer 50
+                echo -e "  ${YELLOW}提示: 如需使用当前用户运行 Docker，请重新登录终端${NC}"
                 press_any_key
                 ;;
             0)
@@ -513,6 +522,271 @@ show_install_menu() {
                 log_error "无效输入。"
                 press_any_key
                 ;;
+        esac
+    done
+}
+
+# ================== Nginx 管理子菜单 ==================
+install_nginx_menu() {
+    while true; do
+        clear
+        draw_title_line "Nginx 管理" 50
+        echo ""
+        
+        # 显示当前状态
+        if command -v nginx &>/dev/null; then
+            local nginx_ver=$(nginx -v 2>&1 | awk -F'/' '{print $2}')
+            echo -e "  ${GREEN}✓${NC} Nginx 已安装 (${nginx_ver})"
+            if systemctl is-active --quiet nginx 2>/dev/null; then
+                echo -e "  ${GREEN}●${NC} 运行状态: ${GREEN}运行中${NC}"
+            else
+                echo -e "  ${RED}●${NC} 运行状态: ${RED}已停止${NC}"
+            fi
+        else
+            echo -e "  ${GRAY}○${NC} Nginx 未安装"
+        fi
+        echo ""
+        
+        draw_menu_item "1" "📦" "安装 Nginx"
+        draw_menu_item "2" "🔀" "配置反向代理"
+        draw_menu_item "3" "▶️" "启动 Nginx"
+        draw_menu_item "4" "⏹️" "停止 Nginx"
+        draw_menu_item "5" "🔄" "重启 Nginx"
+        draw_menu_item "6" "📊" "查看状态"
+        echo ""
+        draw_separator 50
+        draw_menu_item "0" "🔙" "返回上级菜单"
+        draw_footer 50
+        echo ""
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-6]: )" nginx_choice </dev/tty
+        
+        case $nginx_choice in
+            1)
+                clear
+                draw_title_line "安装 Nginx" 50
+                echo ""
+                log_info "正在安装 Nginx..."
+                sudo apt-get update && sudo apt-get install -y nginx
+                log_success "Nginx 安装完成！"
+                nginx -v
+                echo ""
+                echo -e "  ${CYAN}配置目录:${NC} /etc/nginx/"
+                echo -e "  ${CYAN}站点目录:${NC} /var/www/html/"
+                press_any_key
+                ;;
+            2)
+                clear
+                draw_title_line "配置 Nginx 反向代理" 50
+                echo ""
+                if ! command -v nginx &>/dev/null; then
+                    log_error "Nginx 未安装，请先安装！"
+                    press_any_key
+                    continue
+                fi
+                
+                read -p "请输入域名 (如 example.com): " domain </dev/tty
+                read -p "请输入后端地址 (如 127.0.0.1:3000): " backend </dev/tty
+                
+                if [[ -z "$domain" || -z "$backend" ]]; then
+                    log_error "域名和后端地址不能为空！"
+                    press_any_key
+                    continue
+                fi
+                
+                local conf_file="/etc/nginx/sites-available/${domain}"
+                sudo tee "$conf_file" > /dev/null <<EOF
+server {
+    listen 80;
+    server_name ${domain};
+
+    location / {
+        proxy_pass http://${backend};
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+EOF
+                sudo ln -sf "$conf_file" /etc/nginx/sites-enabled/
+                sudo nginx -t && sudo systemctl reload nginx
+                log_success "反向代理配置完成！"
+                echo -e "  ${CYAN}域名:${NC} ${domain}"
+                echo -e "  ${CYAN}后端:${NC} ${backend}"
+                echo -e "  ${YELLOW}提示: 如需 HTTPS，请使用 certbot 申请证书${NC}"
+                press_any_key
+                ;;
+            3)
+                sudo systemctl start nginx
+                log_success "Nginx 已启动"
+                press_any_key
+                ;;
+            4)
+                sudo systemctl stop nginx
+                log_success "Nginx 已停止"
+                press_any_key
+                ;;
+            5)
+                sudo systemctl restart nginx
+                log_success "Nginx 已重启"
+                press_any_key
+                ;;
+            6)
+                clear
+                draw_title_line "Nginx 状态" 50
+                echo ""
+                sudo systemctl status nginx --no-pager || true
+                press_any_key
+                ;;
+            0)
+                break
+                ;;
+            *)
+                log_error "无效输入。"
+                press_any_key
+                ;;
+        esac
+    done
+}
+
+# ================== Caddy 管理子菜单 ==================
+install_caddy_menu() {
+    while true; do
+        clear
+        draw_title_line "Caddy 管理" 50
+        echo ""
+        
+        # 显示当前状态
+        if command -v caddy &>/dev/null; then
+            local caddy_ver=$(caddy version 2>/dev/null | awk '{print $1}')
+            echo -e "  ${GREEN}✓${NC} Caddy 已安装 (${caddy_ver})"
+            if systemctl is-active --quiet caddy 2>/dev/null; then
+                echo -e "  ${GREEN}●${NC} 运行状态: ${GREEN}运行中${NC}"
+            else
+                echo -e "  ${RED}●${NC} 运行状态: ${RED}已停止${NC}"
+            fi
+        else
+            echo -e "  ${GRAY}○${NC} Caddy 未安装"
+        fi
+        echo ""
+        
+        draw_menu_item "1" "📦" "安装 Caddy"
+        draw_menu_item "2" "🔀" "配置反向代理 (自动 HTTPS)"
+        draw_menu_item "3" "▶️" "启动 Caddy"
+        draw_menu_item "4" "⏹️" "停止 Caddy"
+        draw_menu_item "5" "🔄" "重启 Caddy"
+        draw_menu_item "6" "📊" "查看状态"
+        echo ""
+        draw_separator 50
+        draw_menu_item "0" "🔙" "返回上级菜单"
+        draw_footer 50
+        echo ""
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-6]: )" caddy_choice </dev/tty
+        
+        case $caddy_choice in
+            1)
+                clear
+                draw_title_line "安装 Caddy" 50
+                echo ""
+                log_info "正在安装 Caddy..."
+                sudo apt-get install -y debian-keyring debian-archive-keyring apt-transport-https &>/dev/null
+                curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg --yes
+                curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
+                sudo apt-get update && sudo apt-get install -y caddy
+                log_success "Caddy 安装完成！"
+                caddy version
+                echo ""
+                echo -e "  ${CYAN}配置文件:${NC} /etc/caddy/Caddyfile"
+                echo -e "  ${GREEN}特性: 自动 HTTPS 证书申请与续期${NC}"
+                press_any_key
+                ;;
+            2)
+                clear
+                draw_title_line "配置 Caddy 反向代理" 50
+                echo ""
+                if ! command -v caddy &>/dev/null; then
+                    log_error "Caddy 未安装，请先安装！"
+                    press_any_key
+                    continue
+                fi
+                
+                read -p "请输入域名 (如 example.com): " domain </dev/tty
+                read -p "请输入后端地址 (如 127.0.0.1:3000): " backend </dev/tty
+                
+                if [[ -z "$domain" || -z "$backend" ]]; then
+                    log_error "域名和后端地址不能为空！"
+                    press_any_key
+                    continue
+                fi
+                
+                # 追加到 Caddyfile
+                echo "" | sudo tee -a /etc/caddy/Caddyfile >/dev/null
+                echo "${domain} {" | sudo tee -a /etc/caddy/Caddyfile >/dev/null
+                echo "    reverse_proxy ${backend}" | sudo tee -a /etc/caddy/Caddyfile >/dev/null
+                echo "}" | sudo tee -a /etc/caddy/Caddyfile >/dev/null
+                
+                sudo systemctl reload caddy
+                log_success "反向代理配置完成！"
+                echo -e "  ${CYAN}域名:${NC} ${domain}"
+                echo -e "  ${CYAN}后端:${NC} ${backend}"
+                echo -e "  ${GREEN}Caddy 将自动为该域名申请 HTTPS 证书${NC}"
+                press_any_key
+                ;;
+            3)
+                sudo systemctl start caddy
+                log_success "Caddy 已启动"
+                press_any_key
+                ;;
+            4)
+                sudo systemctl stop caddy
+                log_success "Caddy 已停止"
+                press_any_key
+                ;;
+            5)
+                sudo systemctl restart caddy
+                log_success "Caddy 已重启"
+                press_any_key
+                ;;
+            6)
+                clear
+                draw_title_line "Caddy 状态" 50
+                echo ""
+                sudo systemctl status caddy --no-pager || true
+                press_any_key
+                ;;
+            0)
+                break
+                ;;
+            *)
+                log_error "无效输入。"
+                press_any_key
+                ;;
+        esac
+    done
+}
+
+# ================== 常用软件安装主菜单 ==================
+show_install_menu() {
+    while true; do
+        clear
+        draw_title_line "常用软件安装" 50
+        echo ""
+        draw_menu_item "1" "🐳" "Docker 安装"
+        draw_menu_item "2" "🌐" "Nginx 管理"
+        draw_menu_item "3" "🔒" "Caddy 管理"
+        echo ""
+        draw_separator 50
+        draw_menu_item "0" "🔙" "返回主菜单"
+        draw_footer 50
+        echo ""
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-3]: )" install_choice </dev/tty
+
+        case $install_choice in
+            1) install_docker_menu ;;
+            2) install_nginx_menu ;;
+            3) install_caddy_menu ;;
+            0) break ;;
+            *) log_error "无效输入。"; press_any_key ;;
         esac
     done
 }
