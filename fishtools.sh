@@ -1494,13 +1494,15 @@ ssh_security_menu() {
         draw_menu_item "3" "🔒" "禁用密码登录 (仅密钥)"
         draw_menu_item "4" "🔓" "恢复密码登录"
         draw_menu_item "5" "📋" "查看当前公钥"
-        draw_menu_item "6" "❓" "使用帮助"
+        draw_menu_item "6" "📋" "查看当前私钥"
+        draw_menu_item "7" "🗑️" "删除密钥文件"
+        draw_menu_item "8" "❓" "使用帮助"
         echo ""
         draw_separator 50
         draw_menu_item "0" "🔙" "返回上级菜单"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-6]: )" ssh_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-8]: )" ssh_choice </dev/tty
         
         case $ssh_choice in
             1)
@@ -1564,11 +1566,24 @@ ssh_security_menu() {
                 fi
                 echo ""
                 echo -e "  ${WHITE}${BOLD}下一步操作：${NC}"
-                echo -e "  1. 将私钥文件下载到本地电脑保存"
+                echo -e "  1. 复制私钥内容到本地保存"
                 echo -e "  2. (可选) 删除服务器上的私钥文件"
                 echo -e "  3. 使用私钥登录测试"
                 echo ""
                 echo -e "  ${YELLOW}⚠ 请妥善保管私钥，丢失后无法恢复！${NC}"
+                echo ""
+                read -p "是否立即显示私钥内容? (y/n): " show_key </dev/tty
+                if [[ "$show_key" == "y" || "$show_key" == "Y" ]]; then
+                    echo ""
+                    echo -e "  ${WHITE}${BOLD}私钥内容 (请复制保存):${NC}"
+                    echo -e "  ${GRAY}--- 开始 ---${NC}"
+                    if [[ "$key_type" == "2" ]]; then
+                        cat ~/.ssh/id_rsa
+                    else
+                        cat ~/.ssh/id_ed25519
+                    fi
+                    echo -e "  ${GRAY}--- 结束 ---${NC}"
+                fi
                 press_any_key
                 ;;
             2)
@@ -1679,6 +1694,81 @@ ssh_security_menu() {
                 ;;
             6)
                 clear
+                draw_title_line "当前私钥" 50
+                echo ""
+                echo -e "  ${RED}${BOLD}⚠ 警告：私钥是敏感信息，请勿泄露！${NC}"
+                echo ""
+                if [[ -f ~/.ssh/id_ed25519 ]]; then
+                    echo -e "  ${CYAN}ED25519 私钥:${NC}"
+                    echo -e "  ${GRAY}--- 开始 ---${NC}"
+                    cat ~/.ssh/id_ed25519
+                    echo -e "  ${GRAY}--- 结束 ---${NC}"
+                elif [[ -f ~/.ssh/id_rsa ]]; then
+                    echo -e "  ${CYAN}RSA 私钥:${NC}"
+                    echo -e "  ${GRAY}--- 开始 ---${NC}"
+                    cat ~/.ssh/id_rsa
+                    echo -e "  ${GRAY}--- 结束 ---${NC}"
+                else
+                    log_warning "未找到私钥文件，请先生成密钥对。"
+                fi
+                press_any_key
+                ;;
+            7)
+                clear
+                draw_title_line "删除密钥文件" 50
+                echo ""
+                echo -e "  ${WHITE}${BOLD}检测到的密钥文件：${NC}"
+                echo ""
+                local has_keys=0
+                [[ -f ~/.ssh/id_ed25519 ]] && { echo -e "  • ~/.ssh/id_ed25519 (私钥)"; has_keys=1; }
+                [[ -f ~/.ssh/id_ed25519.pub ]] && { echo -e "  • ~/.ssh/id_ed25519.pub (公钥)"; has_keys=1; }
+                [[ -f ~/.ssh/id_rsa ]] && { echo -e "  • ~/.ssh/id_rsa (私钥)"; has_keys=1; }
+                [[ -f ~/.ssh/id_rsa.pub ]] && { echo -e "  • ~/.ssh/id_rsa.pub (公钥)"; has_keys=1; }
+                [[ -f ~/.ssh/authorized_keys ]] && echo -e "  • ~/.ssh/authorized_keys (授权公钥列表)"
+                
+                if [[ $has_keys -eq 0 ]]; then
+                    echo -e "  ${GRAY}未找到密钥文件${NC}"
+                    press_any_key
+                    continue
+                fi
+                
+                echo ""
+                echo -e "  ${CYAN}选择要删除的内容:${NC}"
+                echo -e "  1. 仅删除私钥 (保留公钥)"
+                echo -e "  2. 删除密钥对 (私钥+公钥)"
+                echo -e "  3. 清空授权公钥列表"
+                echo -e "  4. 全部删除"
+                echo ""
+                read -p "请选择 [1-4]: " del_choice </dev/tty
+                
+                case $del_choice in
+                    1)
+                        rm -f ~/.ssh/id_ed25519 ~/.ssh/id_rsa 2>/dev/null
+                        log_success "私钥已删除"
+                        ;;
+                    2)
+                        rm -f ~/.ssh/id_ed25519 ~/.ssh/id_ed25519.pub ~/.ssh/id_rsa ~/.ssh/id_rsa.pub 2>/dev/null
+                        log_success "密钥对已删除"
+                        ;;
+                    3)
+                        rm -f ~/.ssh/authorized_keys 2>/dev/null
+                        log_success "授权公钥列表已清空"
+                        ;;
+                    4)
+                        echo ""
+                        read -p "请输入 'yes' 确认删除所有密钥文件: " confirm </dev/tty
+                        if [[ "$confirm" == "yes" ]]; then
+                            rm -f ~/.ssh/id_ed25519 ~/.ssh/id_ed25519.pub ~/.ssh/id_rsa ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys 2>/dev/null
+                            log_success "所有密钥文件已删除"
+                        else
+                            log_info "操作已取消"
+                        fi
+                        ;;
+                esac
+                press_any_key
+                ;;
+            8)
+                clear
                 draw_title_line "SSH 密钥登录帮助" 50
                 echo ""
                 echo -e "  ${WHITE}${BOLD}什么是密钥登录？${NC}"
@@ -1687,7 +1777,7 @@ ssh_security_menu() {
                 echo ""
                 echo -e "  ${WHITE}${BOLD}配置步骤：${NC}"
                 echo -e "  1. 生成密钥对（本菜单选项 1）"
-                echo -e "  2. 将私钥下载到本地电脑"
+                echo -e "  2. 复制私钥到本地电脑保存"
                 echo -e "  3. 测试密钥登录是否成功"
                 echo -e "  4. 确认无误后禁用密码登录（选项 3）"
                 echo ""
