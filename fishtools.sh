@@ -1520,25 +1520,55 @@ ssh_security_menu() {
                 echo ""
                 read -p "请选择 [1/2]: " key_type </dev/tty
                 
+                echo ""
+                echo -e "  ${CYAN}是否为私钥设置密码保护？${NC}"
+                echo -e "  ${GRAY}(设置密码后，每次使用私钥都需要输入密码)${NC}"
+                echo ""
+                read -p "设置密码保护? (y/n): " use_pass </dev/tty
+                
+                local passphrase=""
+                if [[ "$use_pass" == "y" || "$use_pass" == "Y" ]]; then
+                    echo ""
+                    read -s -p "请输入密钥密码: " passphrase </dev/tty
+                    echo ""
+                    read -s -p "请再次确认密码: " passphrase2 </dev/tty
+                    echo ""
+                    if [[ "$passphrase" != "$passphrase2" ]]; then
+                        log_error "两次密码不一致！"
+                        press_any_key
+                        continue
+                    fi
+                fi
+                
                 mkdir -p ~/.ssh
                 chmod 700 ~/.ssh
                 
                 if [[ "$key_type" == "2" ]]; then
-                    ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "" -C "fishtools-$(date +%Y%m%d)"
+                    ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "$passphrase" -C "fishtools-$(date +%Y%m%d)"
                     log_success "RSA 密钥对已生成！"
                     echo ""
                     echo -e "  ${CYAN}私钥位置:${NC} ~/.ssh/id_rsa"
                     echo -e "  ${CYAN}公钥位置:${NC} ~/.ssh/id_rsa.pub"
                 else
-                    ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N "" -C "fishtools-$(date +%Y%m%d)"
+                    ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N "$passphrase" -C "fishtools-$(date +%Y%m%d)"
                     log_success "ED25519 密钥对已生成！"
                     echo ""
                     echo -e "  ${CYAN}私钥位置:${NC} ~/.ssh/id_ed25519"
                     echo -e "  ${CYAN}公钥位置:${NC} ~/.ssh/id_ed25519.pub"
                 fi
                 echo ""
-                echo -e "  ${YELLOW}⚠ 请妥善保管私钥，不要泄露！${NC}"
-                echo -e "  ${YELLOW}⚠ 建议将私钥下载到本地后删除服务器上的私钥${NC}"
+                if [[ -n "$passphrase" ]]; then
+                    echo -e "  ${GREEN}✓ 私钥已设置密码保护${NC}"
+                else
+                    echo -e "  ${YELLOW}○ 私钥无密码保护${NC}"
+                fi
+                echo ""
+                echo -e "  ${WHITE}${BOLD}下一步操作：${NC}"
+                echo -e "  1. 将私钥文件下载到本地电脑保存"
+                echo -e "  2. (可选) 删除服务器上的私钥文件"
+                echo -e "  3. 使用私钥登录测试"
+                echo ""
+                echo -e "  ${YELLOW}⚠ 请妥善保管私钥，丢失后无法恢复！${NC}"
                 press_any_key
                 ;;
             2)
