@@ -1297,6 +1297,195 @@ install_tmux_menu() {
     done
 }
 
+# ================== ufw 防火墙管理 ==================
+install_ufw_menu() {
+    while true; do
+        clear
+        draw_title_line "ufw 防火墙" 50
+        echo ""
+        
+        # 显示当前状态
+        if command -v ufw &>/dev/null; then
+            echo -e "  ${GREEN}✓${NC} ufw 已安装"
+            local status=$(sudo ufw status 2>/dev/null | head -1)
+            if echo "$status" | grep -q "active"; then
+                echo -e "  ${GREEN}●${NC} 防火墙状态: ${GREEN}已启用${NC}"
+            else
+                echo -e "  ${RED}●${NC} 防火墙状态: ${RED}未启用${NC}"
+            fi
+        else
+            echo -e "  ${GRAY}○${NC} ufw 未安装"
+        fi
+        echo ""
+        
+        draw_menu_item "1" "📦" "安装 ufw"
+        draw_menu_item "2" "✅" "启用防火墙"
+        draw_menu_item "3" "❌" "禁用防火墙"
+        draw_menu_item "4" "➕" "开放端口"
+        draw_menu_item "5" "➖" "关闭端口"
+        draw_menu_item "6" "📋" "查看规则"
+        draw_menu_item "7" "🔄" "重置规则"
+        draw_menu_item "8" "🗑️" "卸载 ufw"
+        echo ""
+        draw_separator 50
+        draw_menu_item "0" "🔙" "返回上级菜单"
+        draw_footer 50
+        echo ""
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-8]: )" ufw_choice </dev/tty
+        
+        case $ufw_choice in
+            1)
+                clear
+                log_info "正在安装 ufw..."
+                sudo apt-get update && sudo apt-get install -y ufw
+                log_success "ufw 安装完成！"
+                echo ""
+                echo -e "  ${YELLOW}提示: 启用前请先开放 SSH 端口 (22)${NC}"
+                press_any_key
+                ;;
+            2)
+                clear
+                draw_title_line "启用 ufw" 50
+                echo ""
+                if ! command -v ufw &>/dev/null; then
+                    log_error "ufw 未安装！"
+                    press_any_key
+                    continue
+                fi
+                echo -e "  ${YELLOW}⚠ 警告：启用防火墙前请确保已开放 SSH 端口！${NC}"
+                echo ""
+                read -p "是否先开放 SSH 端口 22? (y/n): " open_ssh </dev/tty
+                if [[ "$open_ssh" == "y" || "$open_ssh" == "Y" ]]; then
+                    sudo ufw allow 22/tcp
+                    log_success "已开放 SSH 端口 22"
+                fi
+                echo ""
+                read -p "确认启用防火墙? (y/n): " confirm </dev/tty
+                if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                    sudo ufw --force enable
+                    log_success "防火墙已启用！"
+                fi
+                press_any_key
+                ;;
+            3)
+                sudo ufw disable
+                log_success "防火墙已禁用"
+                press_any_key
+                ;;
+            4)
+                clear
+                draw_title_line "开放端口" 50
+                echo ""
+                if ! command -v ufw &>/dev/null; then
+                    log_error "ufw 未安装！"
+                    press_any_key
+                    continue
+                fi
+                read -p "请输入要开放的端口 (如 80 或 80/tcp): " port </dev/tty
+                if [[ -n "$port" ]]; then
+                    sudo ufw allow $port
+                    log_success "已开放端口: $port"
+                fi
+                press_any_key
+                ;;
+            5)
+                clear
+                draw_title_line "关闭端口" 50
+                echo ""
+                if ! command -v ufw &>/dev/null; then
+                    log_error "ufw 未安装！"
+                    press_any_key
+                    continue
+                fi
+                read -p "请输入要关闭的端口 (如 80 或 80/tcp): " port </dev/tty
+                if [[ -n "$port" ]]; then
+                    sudo ufw deny $port
+                    log_success "已关闭端口: $port"
+                fi
+                press_any_key
+                ;;
+            6)
+                clear
+                draw_title_line "ufw 规则列表" 50
+                echo ""
+                if ! command -v ufw &>/dev/null; then
+                    log_error "ufw 未安装！"
+                else
+                    sudo ufw status numbered
+                fi
+                press_any_key
+                ;;
+            7)
+                clear
+                draw_title_line "重置 ufw 规则" 50
+                echo ""
+                echo -e "  ${RED}${BOLD}⚠ 警告：将删除所有防火墙规则！${NC}"
+                echo ""
+                read -p "请输入 'yes' 确认重置: " confirm </dev/tty
+                if [[ "$confirm" == "yes" ]]; then
+                    sudo ufw --force reset
+                    log_success "ufw 规则已重置！"
+                else
+                    log_info "操作已取消。"
+                fi
+                press_any_key
+                ;;
+            8)
+                clear
+                if ! command -v ufw &>/dev/null; then
+                    log_warning "ufw 未安装，无需卸载。"
+                    press_any_key
+                    continue
+                fi
+                read -p "确认卸载 ufw? (y/n): " confirm </dev/tty
+                if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                    sudo ufw --force disable 2>/dev/null || true
+                    sudo apt-get purge -y ufw
+                    sudo apt-get autoremove -y --purge
+                    log_success "ufw 已卸载！"
+                fi
+                press_any_key
+                ;;
+            0)
+                break
+                ;;
+            *)
+                log_error "无效输入。"
+                press_any_key
+                ;;
+        esac
+    done
+}
+
+# ================== 安全工具子菜单 ==================
+show_security_menu() {
+    while true; do
+        clear
+        draw_title_line "安全工具" 50
+        echo ""
+        echo -e "  ${WHITE}${BOLD}VPS 安全防护工具${NC}"
+        echo ""
+        echo -e "  ${CYAN}fail2ban${NC} - 自动封禁暴力破解 IP"
+        echo -e "  ${CYAN}ufw${NC}      - 简化版防火墙管理"
+        echo ""
+        draw_menu_item "1" "🛡️" "fail2ban (防暴力破解)"
+        draw_menu_item "2" "🔥" "ufw (防火墙)"
+        echo ""
+        draw_separator 50
+        draw_menu_item "0" "🔙" "返回上级菜单"
+        draw_footer 50
+        echo ""
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-2]: )" sec_choice </dev/tty
+
+        case $sec_choice in
+            1) install_fail2ban_menu ;;
+            2) install_ufw_menu ;;
+            0) break ;;
+            *) log_error "无效输入。"; press_any_key ;;
+        esac
+    done
+}
+
 # ================== 常用软件安装主菜单 ==================
 show_install_menu() {
     while true; do
@@ -1305,7 +1494,7 @@ show_install_menu() {
         echo ""
         draw_menu_item "1" "🐳" "Docker 安装"
         draw_menu_item "2" "🔀" "反代工具 (Nginx / Caddy)"
-        draw_menu_item "3" "🛡️" "fail2ban (安全防护)"
+        draw_menu_item "3" "🛡️" "安全工具 (fail2ban / ufw)"
         draw_menu_item "4" "📊" "系统监控 (htop / btop)"
         draw_menu_item "5" "🖥️" "tmux (终端复用)"
         echo ""
@@ -1318,7 +1507,7 @@ show_install_menu() {
         case $install_choice in
             1) install_docker_menu ;;
             2) show_proxy_menu ;;
-            3) install_fail2ban_menu ;;
+            3) show_security_menu ;;
             4) install_monitor_menu ;;
             5) install_tmux_menu ;;
             0) break ;;
