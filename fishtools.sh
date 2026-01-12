@@ -1458,6 +1458,228 @@ install_ufw_menu() {
 }
 
 # ================== 安全工具子菜单 ==================
+# ================== SSH 安全配置 ==================
+ssh_security_menu() {
+    while true; do
+        clear
+        draw_title_line "SSH 安全配置" 50
+        echo ""
+        
+        # 显示当前状态
+        local pass_auth=$(grep -E "^PasswordAuthentication" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}')
+        local pubkey_auth=$(grep -E "^PubkeyAuthentication" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}')
+        
+        echo -e "  ${WHITE}${BOLD}当前 SSH 配置状态${NC}"
+        if [[ "$pass_auth" == "no" ]]; then
+            echo -e "  ${RED}●${NC} 密码登录: ${RED}已禁用${NC}"
+        else
+            echo -e "  ${GREEN}●${NC} 密码登录: ${GREEN}已启用${NC}"
+        fi
+        if [[ "$pubkey_auth" == "no" ]]; then
+            echo -e "  ${RED}●${NC} 密钥登录: ${RED}已禁用${NC}"
+        else
+            echo -e "  ${GREEN}●${NC} 密钥登录: ${GREEN}已启用${NC}"
+        fi
+        
+        if [[ -f ~/.ssh/authorized_keys ]]; then
+            local key_count=$(wc -l < ~/.ssh/authorized_keys 2>/dev/null || echo 0)
+            echo -e "  ${CYAN}已授权密钥:${NC} ${key_count} 个"
+        else
+            echo -e "  ${CYAN}已授权密钥:${NC} 0 个"
+        fi
+        echo ""
+        
+        draw_menu_item "1" "🔑" "生成 SSH 密钥对"
+        draw_menu_item "2" "📥" "添加公钥到授权列表"
+        draw_menu_item "3" "🔒" "禁用密码登录 (仅密钥)"
+        draw_menu_item "4" "🔓" "恢复密码登录"
+        draw_menu_item "5" "📋" "查看当前公钥"
+        draw_menu_item "6" "❓" "使用帮助"
+        echo ""
+        draw_separator 50
+        draw_menu_item "0" "🔙" "返回上级菜单"
+        draw_footer 50
+        echo ""
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-6]: )" ssh_choice </dev/tty
+        
+        case $ssh_choice in
+            1)
+                clear
+                draw_title_line "生成 SSH 密钥对" 50
+                echo ""
+                if [[ -f ~/.ssh/id_rsa || -f ~/.ssh/id_ed25519 ]]; then
+                    log_warning "检测到已存在密钥文件！"
+                    read -p "是否覆盖生成新密钥? (y/n): " confirm </dev/tty
+                    [[ "$confirm" != "y" && "$confirm" != "Y" ]] && { press_any_key; continue; }
+                fi
+                
+                echo ""
+                echo -e "  ${CYAN}选择密钥类型:${NC}"
+                echo -e "  1. ED25519 (推荐，更安全更快)"
+                echo -e "  2. RSA 4096 (兼容性好)"
+                echo ""
+                read -p "请选择 [1/2]: " key_type </dev/tty
+                
+                mkdir -p ~/.ssh
+                chmod 700 ~/.ssh
+                
+                if [[ "$key_type" == "2" ]]; then
+                    ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "" -C "fishtools-$(date +%Y%m%d)"
+                    log_success "RSA 密钥对已生成！"
+                    echo ""
+                    echo -e "  ${CYAN}私钥位置:${NC} ~/.ssh/id_rsa"
+                    echo -e "  ${CYAN}公钥位置:${NC} ~/.ssh/id_rsa.pub"
+                else
+                    ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N "" -C "fishtools-$(date +%Y%m%d)"
+                    log_success "ED25519 密钥对已生成！"
+                    echo ""
+                    echo -e "  ${CYAN}私钥位置:${NC} ~/.ssh/id_ed25519"
+                    echo -e "  ${CYAN}公钥位置:${NC} ~/.ssh/id_ed25519.pub"
+                fi
+                echo ""
+                echo -e "  ${YELLOW}⚠ 请妥善保管私钥，不要泄露！${NC}"
+                echo -e "  ${YELLOW}⚠ 建议将私钥下载到本地后删除服务器上的私钥${NC}"
+                press_any_key
+                ;;
+            2)
+                clear
+                draw_title_line "添加公钥" 50
+                echo ""
+                echo -e "  ${WHITE}请粘贴您的公钥内容 (ssh-rsa 或 ssh-ed25519 开头):${NC}"
+                echo ""
+                read -p "公钥: " pubkey </dev/tty
+                
+                if [[ -z "$pubkey" ]]; then
+                    log_error "公钥不能为空！"
+                    press_any_key
+                    continue
+                fi
+                
+                if ! echo "$pubkey" | grep -qE "^ssh-(rsa|ed25519|ecdsa)"; then
+                    log_error "公钥格式不正确！"
+                    press_any_key
+                    continue
+                fi
+                
+                mkdir -p ~/.ssh
+                chmod 700 ~/.ssh
+                echo "$pubkey" >> ~/.ssh/authorized_keys
+                chmod 600 ~/.ssh/authorized_keys
+                log_success "公钥已添加到授权列表！"
+                press_any_key
+                ;;
+            3)
+                clear
+                draw_title_line "禁用密码登录" 50
+                echo ""
+                echo -e "  ${RED}${BOLD}⚠ 警告：禁用密码登录后只能用密钥登录！${NC}"
+                echo ""
+                echo -e "  ${YELLOW}请确保：${NC}"
+                echo -e "    1. 已配置密钥登录并测试成功"
+                echo -e "    2. 已保存私钥到本地"
+                echo ""
+                
+                if [[ ! -f ~/.ssh/authorized_keys ]] || [[ ! -s ~/.ssh/authorized_keys ]]; then
+                    log_error "未检测到已授权的公钥！请先添加公钥。"
+                    press_any_key
+                    continue
+                fi
+                
+                read -p "请输入 'yes' 确认禁用密码登录: " confirm </dev/tty
+                if [[ "$confirm" != "yes" ]]; then
+                    log_info "操作已取消。"
+                    press_any_key
+                    continue
+                fi
+                
+                # 备份配置
+                sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak.$(date +%Y%m%d%H%M%S)
+                
+                # 修改配置
+                sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+                sudo sed -i 's/^#*PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+                sudo sed -i 's/^#*ChallengeResponseAuthentication.*/ChallengeResponseAuthentication no/' /etc/ssh/sshd_config
+                
+                # 如果配置项不存在则添加
+                grep -q "^PasswordAuthentication" /etc/ssh/sshd_config || echo "PasswordAuthentication no" | sudo tee -a /etc/ssh/sshd_config
+                grep -q "^PubkeyAuthentication" /etc/ssh/sshd_config || echo "PubkeyAuthentication yes" | sudo tee -a /etc/ssh/sshd_config
+                
+                sudo systemctl restart sshd
+                log_success "密码登录已禁用，仅允许密钥登录！"
+                echo ""
+                echo -e "  ${GREEN}配置已备份到 /etc/ssh/sshd_config.bak.*${NC}"
+                press_any_key
+                ;;
+            4)
+                clear
+                draw_title_line "恢复密码登录" 50
+                echo ""
+                read -p "确认恢复密码登录? (y/n): " confirm </dev/tty
+                if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+                    log_info "操作已取消。"
+                    press_any_key
+                    continue
+                fi
+                
+                sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+                sudo systemctl restart sshd
+                log_success "密码登录已恢复！"
+                press_any_key
+                ;;
+            5)
+                clear
+                draw_title_line "当前公钥" 50
+                echo ""
+                if [[ -f ~/.ssh/id_ed25519.pub ]]; then
+                    echo -e "  ${CYAN}ED25519 公钥:${NC}"
+                    echo ""
+                    cat ~/.ssh/id_ed25519.pub
+                    echo ""
+                elif [[ -f ~/.ssh/id_rsa.pub ]]; then
+                    echo -e "  ${CYAN}RSA 公钥:${NC}"
+                    echo ""
+                    cat ~/.ssh/id_rsa.pub
+                    echo ""
+                else
+                    log_warning "未找到公钥文件，请先生成密钥对。"
+                fi
+                echo ""
+                echo -e "  ${GRAY}提示: 将此公钥添加到其他服务器即可免密登录${NC}"
+                press_any_key
+                ;;
+            6)
+                clear
+                draw_title_line "SSH 密钥登录帮助" 50
+                echo ""
+                echo -e "  ${WHITE}${BOLD}什么是密钥登录？${NC}"
+                echo -e "  使用密钥对（公钥+私钥）代替密码进行 SSH 认证"
+                echo -e "  更安全，不怕暴力破解"
+                echo ""
+                echo -e "  ${WHITE}${BOLD}配置步骤：${NC}"
+                echo -e "  1. 生成密钥对（本菜单选项 1）"
+                echo -e "  2. 将私钥下载到本地电脑"
+                echo -e "  3. 测试密钥登录是否成功"
+                echo -e "  4. 确认无误后禁用密码登录（选项 3）"
+                echo ""
+                echo -e "  ${WHITE}${BOLD}本地使用私钥登录：${NC}"
+                echo -e "  ${CYAN}ssh -i ~/.ssh/id_ed25519 user@server${NC}"
+                echo ""
+                echo -e "  ${WHITE}${BOLD}Windows 用户：${NC}"
+                echo -e "  使用 PuTTY 或 Xshell 导入私钥文件"
+                press_any_key
+                ;;
+            0)
+                break
+                ;;
+            *)
+                log_error "无效输入。"
+                press_any_key
+                ;;
+        esac
+    done
+}
+
+# ================== 安全工具子菜单 ==================
 show_security_menu() {
     while true; do
         clear
@@ -1467,19 +1689,22 @@ show_security_menu() {
         echo ""
         echo -e "  ${CYAN}fail2ban${NC} - 自动封禁暴力破解 IP"
         echo -e "  ${CYAN}ufw${NC}      - 简化版防火墙管理"
+        echo -e "  ${CYAN}SSH 安全${NC} - 密钥登录配置"
         echo ""
         draw_menu_item "1" "🛡️" "fail2ban (防暴力破解)"
         draw_menu_item "2" "🔥" "ufw (防火墙)"
+        draw_menu_item "3" "🔑" "SSH 安全 (密钥登录)"
         echo ""
         draw_separator 50
         draw_menu_item "0" "🔙" "返回上级菜单"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-2]: )" sec_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-3]: )" sec_choice </dev/tty
 
         case $sec_choice in
             1) install_fail2ban_menu ;;
             2) install_ufw_menu ;;
+            3) ssh_security_menu ;;
             0) break ;;
             *) log_error "无效输入。"; press_any_key ;;
         esac
