@@ -944,6 +944,359 @@ show_proxy_menu() {
     done
 }
 
+# ================== fail2ban 管理子菜单 ==================
+install_fail2ban_menu() {
+    while true; do
+        clear
+        draw_title_line "fail2ban 安全防护" 50
+        echo ""
+        
+        # 显示当前状态
+        if command -v fail2ban-client &>/dev/null; then
+            echo -e "  ${GREEN}✓${NC} fail2ban 已安装"
+            if systemctl is-active --quiet fail2ban 2>/dev/null; then
+                echo -e "  ${GREEN}●${NC} 运行状态: ${GREEN}运行中${NC}"
+                local banned=$(sudo fail2ban-client status sshd 2>/dev/null | grep "Currently banned" | awk '{print $NF}')
+                echo -e "  ${CYAN}当前封禁:${NC} ${banned:-0} 个 IP"
+            else
+                echo -e "  ${RED}●${NC} 运行状态: ${RED}已停止${NC}"
+            fi
+        else
+            echo -e "  ${GRAY}○${NC} fail2ban 未安装"
+        fi
+        echo ""
+        
+        draw_menu_item "1" "📦" "安装 fail2ban"
+        draw_menu_item "2" "📋" "查看封禁列表"
+        draw_menu_item "3" "🔓" "解封指定 IP"
+        draw_menu_item "4" "📊" "查看状态"
+        draw_menu_item "5" "🗑️" "卸载 fail2ban"
+        echo ""
+        draw_separator 50
+        draw_menu_item "0" "🔙" "返回上级菜单"
+        draw_footer 50
+        echo ""
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-5]: )" f2b_choice </dev/tty
+        
+        case $f2b_choice in
+            1)
+                clear
+                draw_title_line "安装 fail2ban" 50
+                echo ""
+                log_info "正在安装 fail2ban..."
+                sudo apt-get update && sudo apt-get install -y fail2ban
+                
+                # 启用 SSH 保护
+                sudo tee /etc/fail2ban/jail.local > /dev/null <<EOF
+[sshd]
+enabled = true
+port = ssh
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = 5
+bantime = 3600
+findtime = 600
+EOF
+                sudo systemctl enable fail2ban
+                sudo systemctl restart fail2ban
+                log_success "fail2ban 安装完成！"
+                echo ""
+                echo -e "  ${CYAN}配置说明:${NC}"
+                echo -e "    • 5 次失败后封禁 IP"
+                echo -e "    • 封禁时长: 1 小时"
+                echo -e "    • 配置文件: /etc/fail2ban/jail.local"
+                press_any_key
+                ;;
+            2)
+                clear
+                draw_title_line "封禁列表" 50
+                echo ""
+                if ! command -v fail2ban-client &>/dev/null; then
+                    log_error "fail2ban 未安装！"
+                    press_any_key
+                    continue
+                fi
+                log_info "当前被封禁的 IP 列表:"
+                echo ""
+                sudo fail2ban-client status sshd 2>/dev/null || echo "  暂无封禁记录"
+                press_any_key
+                ;;
+            3)
+                clear
+                draw_title_line "解封 IP" 50
+                echo ""
+                if ! command -v fail2ban-client &>/dev/null; then
+                    log_error "fail2ban 未安装！"
+                    press_any_key
+                    continue
+                fi
+                read -p "请输入要解封的 IP: " unban_ip </dev/tty
+                if [[ -n "$unban_ip" ]]; then
+                    sudo fail2ban-client set sshd unbanip "$unban_ip" && \
+                        log_success "已解封 IP: $unban_ip" || \
+                        log_error "解封失败，IP 可能不在封禁列表中"
+                fi
+                press_any_key
+                ;;
+            4)
+                clear
+                draw_title_line "fail2ban 状态" 50
+                echo ""
+                sudo systemctl status fail2ban --no-pager || true
+                press_any_key
+                ;;
+            5)
+                clear
+                draw_title_line "卸载 fail2ban" 50
+                echo ""
+                if ! command -v fail2ban-client &>/dev/null; then
+                    log_warning "fail2ban 未安装，无需卸载。"
+                    press_any_key
+                    continue
+                fi
+                read -p "确认卸载 fail2ban? (y/n): " confirm </dev/tty
+                if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                    sudo systemctl stop fail2ban 2>/dev/null || true
+                    sudo apt-get purge -y fail2ban
+                    sudo apt-get autoremove -y --purge
+                    log_success "fail2ban 已卸载！"
+                fi
+                press_any_key
+                ;;
+            0)
+                break
+                ;;
+            *)
+                log_error "无效输入。"
+                press_any_key
+                ;;
+        esac
+    done
+}
+
+# ================== 系统监控工具子菜单 ==================
+install_monitor_menu() {
+    while true; do
+        clear
+        draw_title_line "系统监控工具" 50
+        echo ""
+        
+        # 显示当前状态
+        if command -v htop &>/dev/null; then
+            echo -e "  ${GREEN}✓${NC} htop 已安装"
+        else
+            echo -e "  ${GRAY}○${NC} htop 未安装"
+        fi
+        if command -v btop &>/dev/null; then
+            echo -e "  ${GREEN}✓${NC} btop 已安装"
+        else
+            echo -e "  ${GRAY}○${NC} btop 未安装"
+        fi
+        echo ""
+        
+        echo -e "  ${CYAN}htop${NC}  - 经典轻量，兼容性好"
+        echo -e "  ${CYAN}btop${NC}  - 现代美观，功能丰富"
+        echo ""
+        draw_menu_item "1" "📦" "安装 htop"
+        draw_menu_item "2" "📦" "安装 btop"
+        draw_menu_item "3" "▶️" "运行 htop"
+        draw_menu_item "4" "▶️" "运行 btop"
+        draw_menu_item "5" "🗑️" "卸载 htop/btop"
+        echo ""
+        draw_separator 50
+        draw_menu_item "0" "🔙" "返回上级菜单"
+        draw_footer 50
+        echo ""
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-5]: )" mon_choice </dev/tty
+        
+        case $mon_choice in
+            1)
+                clear
+                log_info "正在安装 htop..."
+                sudo apt-get update && sudo apt-get install -y htop
+                log_success "htop 安装完成！运行命令: htop"
+                press_any_key
+                ;;
+            2)
+                clear
+                log_info "正在安装 btop..."
+                sudo apt-get update && sudo apt-get install -y btop 2>/dev/null || {
+                    log_warning "apt 源中无 btop，尝试 snap 安装..."
+                    sudo snap install btop 2>/dev/null || {
+                        log_error "btop 安装失败，您的系统可能不支持"
+                    }
+                }
+                command -v btop &>/dev/null && log_success "btop 安装完成！运行命令: btop"
+                press_any_key
+                ;;
+            3)
+                if command -v htop &>/dev/null; then
+                    htop
+                else
+                    log_error "htop 未安装，请先安装！"
+                    press_any_key
+                fi
+                ;;
+            4)
+                if command -v btop &>/dev/null; then
+                    btop
+                else
+                    log_error "btop 未安装，请先安装！"
+                    press_any_key
+                fi
+                ;;
+            5)
+                clear
+                draw_title_line "卸载监控工具" 50
+                echo ""
+                echo -e "  ${CYAN}1.${NC} 卸载 htop"
+                echo -e "  ${CYAN}2.${NC} 卸载 btop"
+                echo -e "  ${CYAN}3.${NC} 全部卸载"
+                echo ""
+                read -p "请选择: " uninstall_choice </dev/tty
+                case $uninstall_choice in
+                    1) sudo apt-get purge -y htop && log_success "htop 已卸载" ;;
+                    2) sudo apt-get purge -y btop 2>/dev/null; sudo snap remove btop 2>/dev/null; log_success "btop 已卸载" ;;
+                    3) sudo apt-get purge -y htop btop 2>/dev/null; sudo snap remove btop 2>/dev/null; log_success "已全部卸载" ;;
+                esac
+                press_any_key
+                ;;
+            0)
+                break
+                ;;
+            *)
+                log_error "无效输入。"
+                press_any_key
+                ;;
+        esac
+    done
+}
+
+# ================== tmux 管理子菜单 ==================
+install_tmux_menu() {
+    while true; do
+        clear
+        draw_title_line "tmux 终端复用" 50
+        echo ""
+        
+        # 显示当前状态
+        if command -v tmux &>/dev/null; then
+            local tmux_ver=$(tmux -V 2>/dev/null | awk '{print $2}')
+            echo -e "  ${GREEN}✓${NC} tmux 已安装 (${tmux_ver})"
+            local sessions=$(tmux ls 2>/dev/null | wc -l)
+            echo -e "  ${CYAN}活跃会话:${NC} ${sessions} 个"
+        else
+            echo -e "  ${GRAY}○${NC} tmux 未安装"
+        fi
+        echo ""
+        
+        draw_menu_item "1" "📦" "安装 tmux"
+        draw_menu_item "2" "➕" "新建会话"
+        draw_menu_item "3" "📋" "列出会话"
+        draw_menu_item "4" "🔗" "连接会话"
+        draw_menu_item "5" "❓" "使用帮助"
+        draw_menu_item "6" "🗑️" "卸载 tmux"
+        echo ""
+        draw_separator 50
+        draw_menu_item "0" "🔙" "返回上级菜单"
+        draw_footer 50
+        echo ""
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-6]: )" tmux_choice </dev/tty
+        
+        case $tmux_choice in
+            1)
+                clear
+                log_info "正在安装 tmux..."
+                sudo apt-get update && sudo apt-get install -y tmux
+                log_success "tmux 安装完成！"
+                press_any_key
+                ;;
+            2)
+                if ! command -v tmux &>/dev/null; then
+                    log_error "tmux 未安装，请先安装！"
+                    press_any_key
+                    continue
+                fi
+                read -p "请输入会话名称: " session_name </dev/tty
+                if [[ -n "$session_name" ]]; then
+                    tmux new-session -d -s "$session_name"
+                    log_success "会话 '$session_name' 已创建"
+                    read -p "是否立即进入? (y/n): " enter </dev/tty
+                    [[ "$enter" == "y" || "$enter" == "Y" ]] && tmux attach -t "$session_name"
+                fi
+                press_any_key
+                ;;
+            3)
+                clear
+                draw_title_line "tmux 会话列表" 50
+                echo ""
+                if ! command -v tmux &>/dev/null; then
+                    log_error "tmux 未安装！"
+                else
+                    tmux ls 2>/dev/null || echo "  暂无活跃会话"
+                fi
+                press_any_key
+                ;;
+            4)
+                if ! command -v tmux &>/dev/null; then
+                    log_error "tmux 未安装，请先安装！"
+                    press_any_key
+                    continue
+                fi
+                echo ""
+                tmux ls 2>/dev/null || { echo "  暂无活跃会话"; press_any_key; continue; }
+                echo ""
+                read -p "请输入要连接的会话名称: " attach_name </dev/tty
+                [[ -n "$attach_name" ]] && tmux attach -t "$attach_name"
+                ;;
+            5)
+                clear
+                draw_title_line "tmux 使用帮助" 50
+                echo ""
+                echo -e "  ${WHITE}${BOLD}常用快捷键 (先按 Ctrl+B，再按以下键)${NC}"
+                echo ""
+                echo -e "  ${CYAN}d${NC}     - 挂起会话（后台运行）"
+                echo -e "  ${CYAN}c${NC}     - 新建窗口"
+                echo -e "  ${CYAN}n/p${NC}   - 下一个/上一个窗口"
+                echo -e "  ${CYAN}%${NC}     - 左右分屏"
+                echo -e "  ${CYAN}\"${NC}     - 上下分屏"
+                echo -e "  ${CYAN}方向键${NC} - 切换分屏"
+                echo -e "  ${CYAN}x${NC}     - 关闭当前面板"
+                echo ""
+                echo -e "  ${WHITE}${BOLD}常用命令${NC}"
+                echo ""
+                echo -e "  ${CYAN}tmux new -s 名称${NC}     创建会话"
+                echo -e "  ${CYAN}tmux ls${NC}              列出会话"
+                echo -e "  ${CYAN}tmux attach -t 名称${NC}  连接会话"
+                echo -e "  ${CYAN}tmux kill-session -t 名称${NC}  删除会话"
+                press_any_key
+                ;;
+            6)
+                clear
+                if ! command -v tmux &>/dev/null; then
+                    log_warning "tmux 未安装，无需卸载。"
+                    press_any_key
+                    continue
+                fi
+                read -p "确认卸载 tmux? (y/n): " confirm </dev/tty
+                if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                    sudo apt-get purge -y tmux
+                    sudo apt-get autoremove -y --purge
+                    log_success "tmux 已卸载！"
+                fi
+                press_any_key
+                ;;
+            0)
+                break
+                ;;
+            *)
+                log_error "无效输入。"
+                press_any_key
+                ;;
+        esac
+    done
+}
+
 # ================== 常用软件安装主菜单 ==================
 show_install_menu() {
     while true; do
@@ -952,16 +1305,22 @@ show_install_menu() {
         echo ""
         draw_menu_item "1" "🐳" "Docker 安装"
         draw_menu_item "2" "🔀" "反代工具 (Nginx / Caddy)"
+        draw_menu_item "3" "🛡️" "fail2ban (安全防护)"
+        draw_menu_item "4" "📊" "系统监控 (htop / btop)"
+        draw_menu_item "5" "🖥️" "tmux (终端复用)"
         echo ""
         draw_separator 50
         draw_menu_item "0" "🔙" "返回主菜单"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-2]: )" install_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-5]: )" install_choice </dev/tty
 
         case $install_choice in
             1) install_docker_menu ;;
             2) show_proxy_menu ;;
+            3) install_fail2ban_menu ;;
+            4) install_monitor_menu ;;
+            5) install_tmux_menu ;;
             0) break ;;
             *) log_error "无效输入。"; press_any_key ;;
         esac
