@@ -1545,19 +1545,28 @@ ssh_security_menu() {
                 mkdir -p ~/.ssh
                 chmod 700 ~/.ssh
                 
+                local pubkey_file=""
                 if [[ "$key_type" == "2" ]]; then
                     ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "$passphrase" -C "fishtools-$(date +%Y%m%d)"
+                    pubkey_file=~/.ssh/id_rsa.pub
                     log_success "RSA 密钥对已生成！"
                     echo ""
                     echo -e "  ${CYAN}私钥位置:${NC} ~/.ssh/id_rsa"
                     echo -e "  ${CYAN}公钥位置:${NC} ~/.ssh/id_rsa.pub"
                 else
                     ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N "$passphrase" -C "fishtools-$(date +%Y%m%d)"
+                    pubkey_file=~/.ssh/id_ed25519.pub
                     log_success "ED25519 密钥对已生成！"
                     echo ""
                     echo -e "  ${CYAN}私钥位置:${NC} ~/.ssh/id_ed25519"
                     echo -e "  ${CYAN}公钥位置:${NC} ~/.ssh/id_ed25519.pub"
                 fi
+                
+                # 自动将公钥添加到 authorized_keys
+                cat "$pubkey_file" >> ~/.ssh/authorized_keys
+                chmod 600 ~/.ssh/authorized_keys
+                echo ""
+                echo -e "  ${GREEN}✓ 公钥已自动添加到 authorized_keys${NC}"
                 echo ""
                 if [[ -n "$passphrase" ]]; then
                     echo -e "  ${GREEN}✓ 私钥已设置密码保护${NC}"
