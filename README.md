@@ -140,8 +140,20 @@ bash <(curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fisht
 | 软件 | 说明 |
 |:---|:---|
 | 🐳 Docker & Compose | 容器化解决方案，现代化应用部署的基石 |
-| 🌐 Nginx | 高性能 Web 服务器和反向代理 |
+| 🌐 Nginx | 高性能 Web 服务器和反向代理，支持一键配置反向代理和 HTTPS |
 | 🔒 Caddy | 自动 HTTPS 证书的现代 Web 服务器 |
+| 🛡️ 安全工具 | Fail2Ban 防暴力破解、UFW 防火墙管理、SSH 安全配置 |
+
+#### 🛡️ 安全工具功能详情
+
+| 功能 | 说明 |
+|:---|:---|
+| 🔐 Fail2Ban | 防暴力破解，自动封禁恶意 IP |
+| 🧱 UFW 防火墙 | 端口管理、规则配置、一键开关 |
+| 🔑 SSH 安全配置 | 密钥对生成、禁用密码登录、公钥管理 |
+
+> [!TIP]
+> SSH 密钥生成功能会自动配置 sshd 服务，生成后只需将私钥复制到本地即可使用！
 
 ---
 

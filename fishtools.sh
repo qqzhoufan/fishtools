@@ -1567,31 +1567,71 @@ ssh_security_menu() {
                 chmod 600 ~/.ssh/authorized_keys
                 echo ""
                 echo -e "  ${GREEN}✓ 公钥已自动添加到 authorized_keys${NC}"
+                
+                # 自动启用 sshd 公钥认证配置
+                log_info "正在配置 sshd 以启用公钥认证..."
+                
+                # 备份 sshd_config
+                sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak.$(date +%Y%m%d%H%M%S) 2>/dev/null || true
+                
+                # 启用 PubkeyAuthentication
+                sudo sed -i 's/^#*PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+                grep -q "^PubkeyAuthentication" /etc/ssh/sshd_config || echo "PubkeyAuthentication yes" | sudo tee -a /etc/ssh/sshd_config > /dev/null
+                
+                # 确保 AuthorizedKeysFile 配置正确
+                sudo sed -i 's/^#*AuthorizedKeysFile.*/AuthorizedKeysFile .ssh\/authorized_keys/' /etc/ssh/sshd_config
+                grep -q "^AuthorizedKeysFile" /etc/ssh/sshd_config || echo "AuthorizedKeysFile .ssh/authorized_keys" | sudo tee -a /etc/ssh/sshd_config > /dev/null
+                
+                # 重启 sshd 服务使配置生效
+                sudo systemctl restart sshd 2>/dev/null || sudo service ssh restart 2>/dev/null || true
+                
+                echo -e "  ${GREEN}✓ sshd 公钥认证已启用并重启服务${NC}"
                 echo ""
                 if [[ -n "$passphrase" ]]; then
                     echo -e "  ${GREEN}✓ 私钥已设置密码保护${NC}"
                 else
                     echo -e "  ${YELLOW}○ 私钥无密码保护${NC}"
                 fi
+                
+                # 获取服务器 IP 和当前用户
+                local server_ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "服务器IP")
+                local current_user=$(whoami)
+                local key_name="id_ed25519"
+                [[ "$key_type" == "2" ]] && key_name="id_rsa"
+                
                 echo ""
-                echo -e "  ${WHITE}${BOLD}下一步操作：${NC}"
-                echo -e "  1. 复制私钥内容到本地保存"
-                echo -e "  2. (可选) 删除服务器上的私钥文件"
-                echo -e "  3. 使用私钥登录测试"
+                echo -e "  ${WHITE}${BOLD}═══════════════════════════════════════════${NC}"
+                echo -e "  ${WHITE}${BOLD}下一步操作 (必读)：${NC}"
+                echo -e "  ${WHITE}${BOLD}═══════════════════════════════════════════${NC}"
                 echo ""
-                echo -e "  ${YELLOW}⚠ 请妥善保管私钥，丢失后无法恢复！${NC}"
+                echo -e "  ${CYAN}步骤 1:${NC} 复制下方私钥内容到本地文件"
+                echo -e "         保存为: ${YELLOW}~/.ssh/${key_name}_server${NC}"
+                echo ""
+                echo -e "  ${CYAN}步骤 2:${NC} 在本地终端设置私钥权限"
+                echo -e "         ${WHITE}chmod 600 ~/.ssh/${key_name}_server${NC}"
+                echo ""
+                echo -e "  ${CYAN}步骤 3:${NC} 测试密钥登录 (在本地执行)"
+                echo -e "         ${WHITE}ssh -i ~/.ssh/${key_name}_server ${current_user}@${server_ip}${NC}"
+                echo ""
+                echo -e "  ${CYAN}步骤 4:${NC} 确认登录成功后，可禁用密码登录"
+                echo -e "         使用菜单选项 3「禁用密码登录」"
+                echo ""
+                echo -e "  ${RED}${BOLD}⚠ 重要提示：${NC}"
+                echo -e "  ${YELLOW}• 私钥必须下载到本地才能使用！${NC}"
+                echo -e "  ${YELLOW}• 请妥善保管私钥，丢失后无法恢复！${NC}"
+                echo -e "  ${YELLOW}• 禁用密码登录前请务必测试密钥登录！${NC}"
                 echo ""
                 read -p "是否立即显示私钥内容? (y/n): " show_key </dev/tty
                 if [[ "$show_key" == "y" || "$show_key" == "Y" ]]; then
                     echo ""
-                    echo -e "  ${WHITE}${BOLD}私钥内容 (请复制保存):${NC}"
-                    echo -e "  ${GRAY}--- 开始 ---${NC}"
+                    echo -e "  ${WHITE}${BOLD}私钥内容 (请完整复制保存):${NC}"
+                    echo -e "  ${GRAY}─────────────── 开始 ───────────────${NC}"
                     if [[ "$key_type" == "2" ]]; then
                         cat ~/.ssh/id_rsa
                     else
                         cat ~/.ssh/id_ed25519
                     fi
-                    echo -e "  ${GRAY}--- 结束 ---${NC}"
+                    echo -e "  ${GRAY}─────────────── 结束 ───────────────${NC}"
                 fi
                 press_any_key
                 ;;
@@ -1848,7 +1888,7 @@ show_install_menu() {
         echo ""
         draw_menu_item "1" "🐳" "Docker 安装"
         draw_menu_item "2" "🔀" "反代工具 (Nginx / Caddy)"
-        draw_menu_item "3" "🛡️" "安全工具 (fail2ban / ufw)"
+        draw_menu_item "3" "🛡️" "安全工具 (fail2ban / ufw / SSH密钥)"
         draw_menu_item "4" "📊" "系统监控 (htop / btop)"
         draw_menu_item "5" "🖥️" "tmux (终端复用)"
         echo ""
