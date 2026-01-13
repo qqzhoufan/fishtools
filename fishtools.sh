@@ -149,12 +149,13 @@ show_status_menu() {
         draw_menu_item "3" "🌐" "网络流量监控"
         draw_menu_item "4" "⚙️" "进程管理"
         draw_menu_item "5" "🔌" "端口查看"
+        draw_menu_item "6" "🔧" "系统服务管理"
         echo ""
         draw_separator 50
         draw_menu_item "0" "🔙" "返回主菜单"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-5]: )" status_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-6]: )" status_choice </dev/tty
 
         case $status_choice in
             1)
@@ -176,6 +177,9 @@ show_status_menu() {
                 show_open_ports
                 press_any_key
                 ;;
+            6)
+                show_service_manager
+                ;;
             0)
                 break
                 ;;
@@ -191,12 +195,54 @@ show_machine_info() {
     clear
     draw_title_line "VPS 基本信息" 50
     echo ""
-    echo -e "  ${CYAN}CPU 型号${NC}    │ $(lscpu | grep 'Model name' | sed -E 's/.*Model name:\s*//')"
+    
+    # 基础硬件信息
+    echo -e "  ${WHITE}${BOLD}硬件信息${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    echo -e "  ${CYAN}CPU 型号${NC}    │ $(lscpu | grep 'Model name' | sed -E 's/.*Model name:\s*//' | head -1)"
     echo -e "  ${CYAN}CPU 核心${NC}    │ $(nproc) 核"
     echo -e "  ${CYAN}内存总量${NC}    │ $(free -m | awk 'NR==2{print $2}') MB"
+    echo -e "  ${CYAN}磁盘总量${NC}    │ $(df -h / | awk 'NR==2{print $2}')"
     echo -e "  ${CYAN}系统架构${NC}    │ $(uname -m)"
+    
+    # 虚拟化检测
+    local virt_type="物理机"
+    if command -v systemd-detect-virt &>/dev/null; then
+        virt_type=$(systemd-detect-virt 2>/dev/null || echo "未知")
+        [[ "$virt_type" == "none" ]] && virt_type="物理机"
+    elif [[ -f /proc/vz/veinfo ]]; then
+        virt_type="OpenVZ"
+    elif grep -q "hypervisor" /proc/cpuinfo 2>/dev/null; then
+        virt_type="虚拟机"
+    fi
+    echo -e "  ${CYAN}虚拟化${NC}      │ ${virt_type}"
+    
+    echo ""
+    echo -e "  ${WHITE}${BOLD}系统信息${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
     echo -e "  ${CYAN}操作系统${NC}    │ $(. /etc/os-release && echo $PRETTY_NAME)"
     echo -e "  ${CYAN}内核版本${NC}    │ $(uname -r)"
+    echo -e "  ${CYAN}运行时间${NC}    │ $(uptime -p 2>/dev/null | sed 's/up //' || uptime | awk -F'up ' '{print $2}' | awk -F',' '{print $1}')"
+    
+    # 负载
+    local load_avg=$(cat /proc/loadavg | awk '{print $1, $2, $3}')
+    echo -e "  ${CYAN}系统负载${NC}    │ ${load_avg} (1/5/15分钟)"
+    
+    echo ""
+    echo -e "  ${WHITE}${BOLD}网络信息${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    
+    # 获取公网 IPv4
+    local ipv4=$(curl -s4 --connect-timeout 3 ip.sb 2>/dev/null || curl -s4 --connect-timeout 3 ifconfig.me 2>/dev/null || echo "获取失败")
+    echo -e "  ${CYAN}公网 IPv4${NC}   │ ${ipv4}"
+    
+    # 获取公网 IPv6
+    local ipv6=$(curl -s6 --connect-timeout 3 ip.sb 2>/dev/null || echo "无/获取失败")
+    echo -e "  ${CYAN}公网 IPv6${NC}   │ ${ipv6}"
+    
+    # 主机名
+    echo -e "  ${CYAN}主机名${NC}      │ $(hostname)"
+    
     echo ""
     draw_footer 50
 }
@@ -206,8 +252,17 @@ show_live_performance() {
     draw_title_line "VPS 实时性能" 50
     echo ""
     
+    echo -e "  ${WHITE}${BOLD}CPU & 内存${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    
+    # CPU 使用率
     local cpu_usage
     cpu_usage=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}')
+    
+    # IO 等待
+    local iowait
+    iowait=$(top -bn1 | grep "Cpu(s)" | awk '{for(i=1;i<=NF;i++) if($i ~ /wa/) print $(i-1)}' | tr -d ',')
+    [[ -z "$iowait" ]] && iowait="0.0"
     
     # CPU 使用率颜色
     local cpu_color=$GREEN
@@ -216,14 +271,13 @@ show_live_performance() {
     elif (( $(echo "$cpu_usage > 40" | bc -l) )); then
         cpu_color=$YELLOW
     fi
-    echo -e "  ${CYAN}CPU 使用率${NC}  │ ${cpu_color}${cpu_usage}%${NC}"
+    echo -e "  ${CYAN}CPU 使用率${NC}  │ ${cpu_color}${cpu_usage}%${NC}  ${DIM}(IO等待: ${iowait}%)${NC}"
 
+    # 内存使用
     local mem_total=$(free -m | awk 'NR==2{print $2}')
     local mem_used=$(free -m | awk 'NR==2{print $3}')
-    local mem_free=$(free -m | awk 'NR==2{print $4}')
     local mem_percent=$((mem_used * 100 / mem_total))
     
-    # 内存使用率颜色
     local mem_color=$GREEN
     if (( mem_percent > 80 )); then
         mem_color=$RED
@@ -232,10 +286,30 @@ show_live_performance() {
     fi
     echo -e "  ${CYAN}内存使用${NC}    │ ${mem_color}${mem_used}MB${NC} / ${mem_total}MB (${mem_color}${mem_percent}%${NC})"
     
+    # SWAP 使用
+    local swap_total=$(free -m | awk 'NR==3{print $2}')
+    local swap_used=$(free -m | awk 'NR==3{print $3}')
+    if [[ "$swap_total" -gt 0 ]]; then
+        local swap_percent=$((swap_used * 100 / swap_total))
+        local swap_color=$GREEN
+        if (( swap_percent > 80 )); then
+            swap_color=$RED
+        elif (( swap_percent > 50 )); then
+            swap_color=$YELLOW
+        fi
+        echo -e "  ${CYAN}SWAP 使用${NC}   │ ${swap_color}${swap_used}MB${NC} / ${swap_total}MB (${swap_color}${swap_percent}%${NC})"
+    else
+        echo -e "  ${CYAN}SWAP 使用${NC}   │ ${GRAY}未配置${NC}"
+    fi
+    
+    echo ""
+    echo -e "  ${WHITE}${BOLD}磁盘 & 网络${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    
+    # 磁盘使用
     local disk_info=$(df -h / | awk 'NR==2{printf "%s / %s (%s)", $3, $2, $5}')
     local disk_percent=$(df -h / | awk 'NR==2{print $5}' | tr -d '%')
     
-    # 磁盘使用率颜色
     local disk_color=$GREEN
     if (( disk_percent > 80 )); then
         disk_color=$RED
@@ -243,6 +317,15 @@ show_live_performance() {
         disk_color=$YELLOW
     fi
     echo -e "  ${CYAN}磁盘空间${NC}    │ ${disk_color}${disk_info}${NC}"
+    
+    # 网络连接数
+    local tcp_conn=$(ss -t state established 2>/dev/null | wc -l)
+    local tcp_listen=$(ss -tln 2>/dev/null | grep -c LISTEN || echo 0)
+    echo -e "  ${CYAN}网络连接${NC}    │ TCP 已建立: ${tcp_conn}  监听端口: ${tcp_listen}"
+    
+    # 系统负载
+    local load_avg=$(cat /proc/loadavg | awk '{print $1, $2, $3}')
+    echo -e "  ${CYAN}系统负载${NC}    │ ${load_avg}"
     
     echo ""
     echo -e "  ${DIM}(此为快照信息，非持续刷新)${NC}"
@@ -440,6 +523,119 @@ show_open_ports() {
     
     echo ""
     draw_footer 50
+}
+
+# ================== 系统服务管理 ==================
+show_service_manager() {
+    while true; do
+        clear
+        draw_title_line "系统服务管理" 50
+        echo ""
+        draw_menu_item "1" "📋" "查看运行中的服务"
+        draw_menu_item "2" "🔍" "搜索服务"
+        draw_menu_item "3" "▶️" "启动服务"
+        draw_menu_item "4" "⏹️" "停止服务"
+        draw_menu_item "5" "🔄" "重启服务"
+        draw_menu_item "6" "📊" "查看服务状态"
+        echo ""
+        draw_separator 50
+        draw_menu_item "0" "🔙" "返回上级菜单"
+        draw_footer 50
+        echo ""
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-6]: )" svc_choice </dev/tty
+
+        case $svc_choice in
+            1)
+                clear
+                draw_title_line "运行中的服务" 50
+                echo ""
+                echo -e "  ${WHITE}${BOLD}活跃的系统服务 (前30个)${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                echo ""
+                systemctl list-units --type=service --state=running --no-pager 2>/dev/null | head -35 || \
+                    service --status-all 2>/dev/null | grep '\[ + \]' | head -30
+                press_any_key
+                ;;
+            2)
+                clear
+                draw_title_line "搜索服务" 50
+                echo ""
+                read -p "请输入服务名关键词: " keyword </dev/tty
+                if [[ -n "$keyword" ]]; then
+                    echo ""
+                    echo -e "  ${WHITE}${BOLD}搜索结果:${NC}"
+                    echo ""
+                    systemctl list-units --type=service --all --no-pager 2>/dev/null | grep -i "$keyword" || \
+                        echo "  未找到匹配的服务"
+                fi
+                press_any_key
+                ;;
+            3)
+                clear
+                draw_title_line "启动服务" 50
+                echo ""
+                read -p "请输入要启动的服务名: " svc_name </dev/tty
+                if [[ -n "$svc_name" ]]; then
+                    if sudo systemctl start "$svc_name" 2>/dev/null; then
+                        log_success "服务 $svc_name 已启动"
+                    else
+                        log_error "启动服务 $svc_name 失败"
+                    fi
+                fi
+                press_any_key
+                ;;
+            4)
+                clear
+                draw_title_line "停止服务" 50
+                echo ""
+                read -p "请输入要停止的服务名: " svc_name </dev/tty
+                if [[ -n "$svc_name" ]]; then
+                    read -p "确认停止服务 $svc_name? (y/n): " confirm </dev/tty
+                    if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                        if sudo systemctl stop "$svc_name" 2>/dev/null; then
+                            log_success "服务 $svc_name 已停止"
+                        else
+                            log_error "停止服务 $svc_name 失败"
+                        fi
+                    fi
+                fi
+                press_any_key
+                ;;
+            5)
+                clear
+                draw_title_line "重启服务" 50
+                echo ""
+                read -p "请输入要重启的服务名: " svc_name </dev/tty
+                if [[ -n "$svc_name" ]]; then
+                    if sudo systemctl restart "$svc_name" 2>/dev/null; then
+                        log_success "服务 $svc_name 已重启"
+                    else
+                        log_error "重启服务 $svc_name 失败"
+                    fi
+                fi
+                press_any_key
+                ;;
+            6)
+                clear
+                draw_title_line "查看服务状态" 50
+                echo ""
+                read -p "请输入服务名: " svc_name </dev/tty
+                if [[ -n "$svc_name" ]]; then
+                    echo ""
+                    sudo systemctl status "$svc_name" --no-pager 2>/dev/null || \
+                        log_error "无法获取服务 $svc_name 的状态"
+                fi
+                press_any_key
+                ;;
+            0)
+                break
+                ;;
+            *)
+                log_error "无效输入。"
+                press_any_key
+                ;;
+        esac
+    done
 }
 
 # ================== Docker 安装子菜单 ==================
@@ -2000,12 +2196,16 @@ show_test_menu() {
         draw_menu_item "1" "🚀" "融合怪 (ecs.sh) 综合测试"
         draw_menu_item "2" "🐟" "咸鱼 IP 检测 (原创)"
         draw_menu_item "3" "🛤️" "路由测试 (回程/去程)"
+        draw_menu_item "4" "📡" "Speedtest 测速"
+        draw_menu_item "5" "🌐" "三网测速 (电信/联通/移动)"
+        draw_menu_item "6" "💾" "磁盘 IO 测试"
+        draw_menu_item "7" "📺" "流媒体解锁检测"
         echo ""
         draw_separator 50
         draw_menu_item "0" "🔙" "返回主菜单"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-3]: )" test_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-7]: )" test_choice </dev/tty
         case $test_choice in
             1)
                 clear
@@ -2053,6 +2253,126 @@ show_test_menu() {
                 ;;
             3)
                 show_route_menu
+                ;;
+            4)
+                clear
+                draw_title_line "Speedtest 测速" 50
+                echo ""
+                # 检查 speedtest 是否已安装
+                if ! command -v speedtest &>/dev/null; then
+                    log_info "正在安装 Speedtest CLI..."
+                    # 尝试使用官方安装脚本
+                    if curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | sudo bash 2>/dev/null; then
+                        sudo apt-get install -y speedtest 2>/dev/null
+                    else
+                        # 备用方案：使用 speedtest-cli (Python 版本)
+                        log_warning "官方安装失败，尝试安装 Python 版本..."
+                        if command -v pip3 &>/dev/null; then
+                            sudo pip3 install speedtest-cli 2>/dev/null
+                        elif command -v pip &>/dev/null; then
+                            sudo pip install speedtest-cli 2>/dev/null
+                        else
+                            sudo apt-get install -y speedtest-cli 2>/dev/null || \
+                            sudo apt-get install -y python3-pip && sudo pip3 install speedtest-cli
+                        fi
+                    fi
+                fi
+                
+                echo ""
+                if command -v speedtest &>/dev/null; then
+                    log_info "开始测速..."
+                    echo ""
+                    speedtest --accept-license --accept-gdpr 2>/dev/null || speedtest 2>/dev/null
+                elif command -v speedtest-cli &>/dev/null; then
+                    log_info "开始测速..."
+                    echo ""
+                    speedtest-cli
+                else
+                    log_error "Speedtest 安装失败，请手动安装"
+                fi
+                press_any_key
+                ;;
+            5)
+                clear
+                draw_title_line "三网测速" 50
+                echo ""
+                log_info "正在下载三网测速脚本..."
+                log_info "将测试电信、联通、移动三大运营商的速度"
+                echo ""
+                
+                # 使用 bench.sh 的三网测速
+                if curl -sL https://raw.githubusercontent.com/uxh/superspeed/master/superspeed.sh -o superspeed.sh 2>/dev/null; then
+                    log_success "下载成功，开始执行..."
+                    echo ""
+                    bash superspeed.sh || true
+                    rm -f superspeed.sh
+                else
+                    # 备用方案
+                    log_warning "主脚本下载失败，尝试备用方案..."
+                    bash <(curl -Lso- https://bench.im/hyperspeed) || \
+                    log_error "三网测速脚本下载失败！"
+                fi
+                press_any_key
+                ;;
+            6)
+                clear
+                draw_title_line "磁盘 IO 测试" 50
+                echo ""
+                log_info "开始磁盘 IO 测试..."
+                echo ""
+                
+                echo -e "  ${WHITE}${BOLD}顺序写入测试 (1GB)${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                sync
+                local write_result=$(dd if=/dev/zero of=./test_io_file bs=1M count=1024 conv=fdatasync 2>&1)
+                local write_speed=$(echo "$write_result" | grep -oP '\d+\.?\d*\s*(MB|GB)/s' | tail -1)
+                echo -e "  ${GREEN}写入速度:${NC} ${write_speed:-解析失败}"
+                
+                echo ""
+                echo -e "  ${WHITE}${BOLD}顺序读取测试${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                # 清除缓存
+                sync && echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1 || true
+                local read_result=$(dd if=./test_io_file of=/dev/null bs=1M 2>&1)
+                local read_speed=$(echo "$read_result" | grep -oP '\d+\.?\d*\s*(MB|GB)/s' | tail -1)
+                echo -e "  ${GREEN}读取速度:${NC} ${read_speed:-解析失败}"
+                
+                # 清理测试文件
+                rm -f ./test_io_file
+                
+                echo ""
+                echo -e "  ${WHITE}${BOLD}4K 随机读写测试${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                if command -v fio &>/dev/null; then
+                    local fio_result=$(fio --name=random-rw --ioengine=sync --rw=randrw --bs=4k --size=64m --numjobs=1 --time_based --runtime=10 --group_reporting --filename=./fio_test 2>&1)
+                    local read_iops=$(echo "$fio_result" | grep "read:" | grep -oP 'IOPS=\K[\d.]+[kKmM]?' | head -1)
+                    local write_iops=$(echo "$fio_result" | grep "write:" | grep -oP 'IOPS=\K[\d.]+[kKmM]?' | head -1)
+                    echo -e "  ${GREEN}4K 随机读 IOPS:${NC} ${read_iops:-N/A}"
+                    echo -e "  ${GREEN}4K 随机写 IOPS:${NC} ${write_iops:-N/A}"
+                    rm -f ./fio_test
+                else
+                    echo -e "  ${YELLOW}fio 未安装，跳过 4K 随机读写测试${NC}"
+                    echo -e "  ${DIM}可通过 apt install fio 安装${NC}"
+                fi
+                
+                echo ""
+                press_any_key
+                ;;
+            7)
+                clear
+                draw_title_line "流媒体解锁检测" 50
+                echo ""
+                log_info "正在下载流媒体解锁检测脚本..."
+                log_info "将检测 Netflix, Disney+, YouTube Premium 等平台解锁状态"
+                echo ""
+                
+                # 使用 lmc999/RegionRestrictionCheck
+                if bash <(curl -L -s https://raw.githubusercontent.com/lmc999/RegionRestrictionCheck/main/check.sh) 2>/dev/null; then
+                    :
+                else
+                    log_error "流媒体检测脚本执行失败！"
+                fi
+                press_any_key
                 ;;
             0)
                 break
