@@ -879,37 +879,39 @@ install_docker_menu() {
         echo ""
         
         echo -e "  ${WHITE}${BOLD}【安装与卸载】${NC}"
-        draw_menu_item "1" "🌍" "使用官方源安装 (国外推荐)"
-        draw_menu_item "2" "🇨🇳" "使用阿里云源安装 (国内推荐)"
-        draw_menu_item "3" "🗑️" "卸载 Docker"
+        draw_menu_item "1" "🇨🇳" "使用腾讯云源安装 (国内首选)"
+        draw_menu_item "2" "🇨🇳" "使用阿里云源安装"
+        draw_menu_item "3" "🇨🇳" "使用中科大源安装"
+        draw_menu_item "4" "🌍" "使用官方源安装 (国外推荐)"
+        draw_menu_item "5" "🗑️" "卸载 Docker"
         echo ""
         echo -e "  ${WHITE}${BOLD}【容器管理】${NC}"
-        draw_menu_item "4" "📋" "查看容器列表"
-        draw_menu_item "5" "▶️" "启动/停止/重启容器"
-        draw_menu_item "6" "📝" "查看容器日志"
+        draw_menu_item "6" "📋" "查看容器列表"
+        draw_menu_item "7" "▶️" "启动/停止/重启容器"
+        draw_menu_item "8" "📝" "查看容器日志"
         echo ""
         echo -e "  ${WHITE}${BOLD}【镜像与清理】${NC}"
-        draw_menu_item "7" "🖼️" "查看镜像列表"
-        draw_menu_item "8" "🧹" "清理 Docker 空间"
+        draw_menu_item "9" "🖼️" "查看镜像列表"
+        draw_menu_item "10" "🧹" "清理 Docker 空间"
         echo ""
         draw_separator 50
         draw_menu_item "0" "🔙" "返回上级菜单"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-8]: )" docker_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-10]: )" docker_choice </dev/tty
         
         case $docker_choice in
             1)
                 clear
-                draw_title_line "使用官方源安装 Docker" 50
+                draw_title_line "使用腾讯云源安装 Docker" 50
                 echo ""
                 if command -v docker &>/dev/null; then
                     log_warning "Docker 已安装，是否重新安装？"
                     read -p "输入 y 继续，其他键取消: " confirm </dev/tty
                     [[ "$confirm" != "y" && "$confirm" != "Y" ]] && continue
                 fi
-                log_info "正在从 Docker 官方源安装..."
-                curl -fsSL https://get.docker.com | bash
+                log_info "正在从腾讯云源安装..."
+                curl -fsSL https://get.docker.com | bash -s docker --mirror https://mirrors.cloud.tencent.com/docker-ce
                 sudo usermod -aG docker "$USER" 2>/dev/null || true
                 echo ""
                 log_success "Docker 安装完成！"
@@ -940,6 +942,46 @@ install_docker_menu() {
                 press_any_key
                 ;;
             3)
+                clear
+                draw_title_line "使用中科大源安装 Docker" 50
+                echo ""
+                if command -v docker &>/dev/null; then
+                    log_warning "Docker 已安装，是否重新安装？"
+                    read -p "输入 y 继续，其他键取消: " confirm </dev/tty
+                    [[ "$confirm" != "y" && "$confirm" != "Y" ]] && continue
+                fi
+                log_info "正在从中科大源安装..."
+                curl -fsSL https://get.docker.com | bash -s docker --mirror https://mirrors.ustc.edu.cn/docker-ce
+                sudo usermod -aG docker "$USER" 2>/dev/null || true
+                echo ""
+                log_success "Docker 安装完成！"
+                docker --version
+                docker compose version 2>/dev/null || true
+                echo ""
+                echo -e "  ${YELLOW}提示: 如需使用当前用户运行 Docker，请重新登录终端${NC}"
+                press_any_key
+                ;;
+            4)
+                clear
+                draw_title_line "使用官方源安装 Docker" 50
+                echo ""
+                if command -v docker &>/dev/null; then
+                    log_warning "Docker 已安装，是否重新安装？"
+                    read -p "输入 y 继续，其他键取消: " confirm </dev/tty
+                    [[ "$confirm" != "y" && "$confirm" != "Y" ]] && continue
+                fi
+                log_info "正在从 Docker 官方源安装..."
+                curl -fsSL https://get.docker.com | bash
+                sudo usermod -aG docker "$USER" 2>/dev/null || true
+                echo ""
+                log_success "Docker 安装完成！"
+                docker --version
+                docker compose version 2>/dev/null || true
+                echo ""
+                echo -e "  ${YELLOW}提示: 如需使用当前用户运行 Docker，请重新登录终端${NC}"
+                press_any_key
+                ;;
+            5)
                 clear
                 draw_title_line "卸载 Docker" 50
                 echo ""
@@ -976,7 +1018,7 @@ install_docker_menu() {
                 log_success "Docker 已完全卸载！"
                 press_any_key
                 ;;
-            4)
+            6)
                 clear
                 draw_title_line "容器列表" 50
                 echo ""
@@ -994,7 +1036,7 @@ install_docker_menu() {
                 docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" 2>/dev/null || echo "  暂无容器"
                 press_any_key
                 ;;
-            5)
+            7)
                 clear
                 draw_title_line "容器操作" 50
                 echo ""
@@ -1030,7 +1072,7 @@ install_docker_menu() {
                 esac
                 press_any_key
                 ;;
-            6)
+            8)
                 clear
                 draw_title_line "容器日志" 50
                 echo ""
@@ -1050,7 +1092,7 @@ install_docker_menu() {
                 fi
                 press_any_key
                 ;;
-            7)
+            9)
                 clear
                 draw_title_line "镜像列表" 50
                 echo ""
@@ -1072,7 +1114,7 @@ install_docker_menu() {
                 fi
                 press_any_key
                 ;;
-            8)
+            10)
                 clear
                 draw_title_line "清理 Docker 空间" 50
                 echo ""
