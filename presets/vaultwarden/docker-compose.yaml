@@ -1,0 +1,13 @@
+services:
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./data:/data
+    environment:
+      - TZ=Asia/Shanghai
+      # 生产环境请设置强密码
+      # - ADMIN_TOKEN=your_secure_admin_token

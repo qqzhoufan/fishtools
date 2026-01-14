@@ -2952,10 +2952,31 @@ show_optimization_menu() {
 }
 
 # 核心功能：部署单个预设项目的逻辑
+# 获取项目默认端口
+get_project_default_port() {
+    case "$1" in
+        homepage) echo "3000" ;;
+        nginx-proxy-manager) echo "81" ;;
+        navidrome) echo "4533" ;;
+        qbittorrent) echo "8081" ;;
+        moontv) echo "3000" ;;
+        portainer) echo "9000" ;;
+        alist) echo "5244" ;;
+        uptime-kuma) echo "3001" ;;
+        vaultwarden) echo "80" ;;
+        filebrowser) echo "8080" ;;
+        *) echo "8080" ;;
+    esac
+}
+
+# 部署预设项目
 deploy_preset_project() {
     local project_name="$1"
     if [[ -z "$project_name" ]]; then log_error "内部错误。"; return 1; fi
-    local project_dir="/opt/${project_name}"; local dest_file="${project_dir}/docker-compose.yml"
+    
+    local default_port=$(get_project_default_port "$project_name")
+    local project_dir="/opt/${project_name}"
+    local dest_file="${project_dir}/docker-compose.yml"
     local url_yaml="https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/presets/${project_name}/docker-compose.yaml"
     local url_yml="https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/presets/${project_name}/docker-compose.yml"
     
@@ -2963,13 +2984,53 @@ deploy_preset_project() {
     draw_title_line "部署 ${project_name}" 50
     echo ""
     log_info "即将部署精选项目: ${project_name}"
-    log_info "目标目录: ${project_dir}"
     echo ""
     
+    # 检查 Docker
     if ! command -v docker &>/dev/null || ! docker compose version &>/dev/null; then 
-        log_error "Docker或Compose未安装。"
+        log_error "Docker 或 Compose 未安装。"
         return 1
     fi
+    
+    # 选择部署方式
+    echo -e "  ${WHITE}${BOLD}请选择部署方式:${NC}"
+    echo -e "  ${CYAN}1.${NC} 使用默认配置 ${DIM}(推荐)${NC}"
+    echo -e "  ${CYAN}2.${NC} 自定义配置"
+    echo ""
+    read -p "请选择 [1-2]: " deploy_mode </dev/tty
+    
+    local custom_dir="$project_dir"
+    local custom_port="$default_port"
+    local custom_tz="Asia/Shanghai"
+    
+    if [[ "$deploy_mode" == "2" ]]; then
+        echo ""
+        echo -e "  ${WHITE}${BOLD}自定义配置${NC}"
+        echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+        
+        # 自定义安装目录
+        read -p "安装目录 [${project_dir}]: " input_dir </dev/tty
+        [[ -n "$input_dir" ]] && custom_dir="$input_dir"
+        
+        # 自定义端口
+        read -p "主端口 [${default_port}]: " input_port </dev/tty
+        [[ -n "$input_port" ]] && custom_port="$input_port"
+        
+        # 自定义时区
+        read -p "时区 [Asia/Shanghai]: " input_tz </dev/tty
+        [[ -n "$input_tz" ]] && custom_tz="$input_tz"
+        
+        project_dir="$custom_dir"
+        dest_file="${project_dir}/docker-compose.yml"
+    fi
+    
+    echo ""
+    echo -e "  ${WHITE}${BOLD}部署信息${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    echo -e "  安装目录: ${CYAN}${project_dir}${NC}"
+    echo -e "  主端口:   ${CYAN}${custom_port}${NC}"
+    echo -e "  时区:     ${CYAN}${custom_tz}${NC}"
+    echo ""
     
     read -p "确认部署? (y/n): " confirm </dev/tty
     if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then 
@@ -2988,17 +3049,35 @@ deploy_preset_project() {
         if sudo curl -sLf -o "${dest_file}" "${url_yml}"; then 
             log_success "成功下载 docker-compose.yml。"
         else 
-            log_error "下载失败！在 'presets/${project_name}/' 目录下，既未找到 .yaml 文件，也未找到 .yml 文件。"
+            log_error "下载失败！"
             sudo rm -rf "$project_dir"
             return 1
         fi
+    fi
+    
+    # 如果是自定义配置，替换配置文件中的端口和时区
+    if [[ "$deploy_mode" == "2" ]]; then
+        log_info "正在应用自定义配置..."
+        # 替换端口 (处理常见格式)
+        sudo sed -i "s/:${default_port}/:${custom_port}/g" "${dest_file}" 2>/dev/null || true
+        sudo sed -i "s/- ${default_port}:/- ${custom_port}:/g" "${dest_file}" 2>/dev/null || true
+        sudo sed -i "s/'${default_port}:/'${custom_port}:/g" "${dest_file}" 2>/dev/null || true
+        sudo sed -i "s/\"${default_port}:/\"${custom_port}:/g" "${dest_file}" 2>/dev/null || true
+        # 替换时区
+        sudo sed -i "s|Asia/Shanghai|${custom_tz}|g" "${dest_file}" 2>/dev/null || true
+        sudo sed -i "s|TZ=.*|TZ=${custom_tz}|g" "${dest_file}" 2>/dev/null || true
     fi
     
     log_info "启动项目中..."
     cd "$project_dir" || return 1
     sudo docker compose up -d
     if [[ $? -eq 0 ]]; then 
+        echo ""
         log_success "项目 '$project_name' 已成功部署！"
+        echo ""
+        echo -e "  ${WHITE}${BOLD}访问地址${NC}"
+        echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+        echo -e "  http://服务器IP:${custom_port}"
     else 
         log_error "项目部署失败！"
         return 1
@@ -3048,25 +3127,40 @@ show_preset_deployment_menu() {
         draw_title_line "一键部署精选项目" 50
         echo -e "  ${DIM}by 咸鱼银河${NC}"
         echo ""
+        echo -e "  ${WHITE}${BOLD}【常用服务】${NC}"
         draw_menu_item "1" "🏠" "Homepage (精美起始页)"
         draw_menu_item "2" "🔀" "Nginx-Proxy-Manager (反代神器)"
-        draw_menu_item "3" "🎵" "Navidrome (音乐服务器)"
-        draw_menu_item "4" "📥" "qBittorrent (下载器)"
-        draw_menu_item "5" "📺" "MoonTV (观影聚合)"
+        draw_menu_item "3" "🐳" "Portainer (Docker 可视化管理)"
+        draw_menu_item "4" "📁" "Alist (网盘聚合)"
+        draw_menu_item "5" "📊" "Uptime Kuma (服务监控)"
+        echo ""
+        echo -e "  ${WHITE}${BOLD}【媒体娱乐】${NC}"
+        draw_menu_item "6" "🎵" "Navidrome (音乐服务器)"
+        draw_menu_item "7" "📥" "qBittorrent (下载器)"
+        draw_menu_item "8" "📺" "MoonTV (观影聚合)"
+        echo ""
+        echo -e "  ${WHITE}${BOLD}【工具应用】${NC}"
+        draw_menu_item "9" "🔐" "Vaultwarden (密码管理器)"
+        draw_menu_item "10" "📂" "FileBrowser (文件管理器)"
         echo ""
         draw_separator 50
         draw_menu_item "0" "🔙" "返回上一级菜单"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请选择要部署的项目${NC} [0-5]: )" preset_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请选择要部署的项目${NC} [0-10]: )" preset_choice </dev/tty
         
         local project_to_deploy=""
         case $preset_choice in
             1) project_to_deploy="homepage" ;;
             2) project_to_deploy="nginx-proxy-manager" ;;
-            3) project_to_deploy="navidrome" ;;
-            4) project_to_deploy="qbittorrent" ;;
-            5) project_to_deploy="moontv" ;;
+            3) project_to_deploy="portainer" ;;
+            4) project_to_deploy="alist" ;;
+            5) project_to_deploy="uptime-kuma" ;;
+            6) project_to_deploy="navidrome" ;;
+            7) project_to_deploy="qbittorrent" ;;
+            8) project_to_deploy="moontv" ;;
+            9) project_to_deploy="vaultwarden" ;;
+            10) project_to_deploy="filebrowser" ;;
             0) break ;;
             *) log_error "无效输入。"; press_any_key; continue ;;
         esac
@@ -3077,6 +3171,115 @@ show_preset_deployment_menu() {
             press_any_key
         fi
     done
+}
+# 从自定义 GitHub 仓库部署
+deploy_from_github() {
+    clear
+    draw_title_line "从 GitHub 仓库部署" 50
+    echo ""
+    echo -e "  ${WHITE}${BOLD}支持的仓库格式${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    echo -e "  • https://github.com/owner/repo"
+    echo -e "  • github.com/owner/repo"
+    echo -e "  • owner/repo"
+    echo ""
+    
+    read -p "请输入 GitHub 仓库地址: " repo_url </dev/tty
+    [[ -z "$repo_url" ]] && return 0
+    
+    # 解析仓库信息
+    local owner repo
+    repo_url="${repo_url#https://}"
+    repo_url="${repo_url#http://}"
+    repo_url="${repo_url#github.com/}"
+    
+    owner=$(echo "$repo_url" | cut -d'/' -f1)
+    repo=$(echo "$repo_url" | cut -d'/' -f2)
+    
+    if [[ -z "$owner" || -z "$repo" ]]; then
+        log_error "无法解析仓库地址！"
+        return 1
+    fi
+    
+    echo ""
+    log_info "仓库: ${owner}/${repo}"
+    
+    # 检查 Docker
+    if ! command -v docker &>/dev/null || ! docker compose version &>/dev/null; then 
+        log_error "Docker 或 Compose 未安装。"
+        return 1
+    fi
+    
+    # 输入安装目录
+    local default_dir="/opt/${repo}"
+    read -p "安装目录 [${default_dir}]: " project_dir </dev/tty
+    [[ -z "$project_dir" ]] && project_dir="$default_dir"
+    
+    local dest_file="${project_dir}/docker-compose.yml"
+    
+    # 尝试下载 docker-compose 文件
+    log_info "正在从仓库下载配置文件..."
+    sudo mkdir -p "$project_dir"
+    
+    local raw_base="https://raw.githubusercontent.com/${owner}/${repo}/main"
+    local downloaded=0
+    
+    # 尝试多个可能的路径
+    for path in "docker-compose.yml" "docker-compose.yaml" "compose.yml" "compose.yaml"; do
+        if sudo curl -sLf -o "${dest_file}" "${raw_base}/${path}" 2>/dev/null; then
+            log_success "成功下载 ${path}"
+            downloaded=1
+            break
+        fi
+    done
+    
+    # 尝试 master 分支
+    if [[ $downloaded -eq 0 ]]; then
+        raw_base="https://raw.githubusercontent.com/${owner}/${repo}/master"
+        for path in "docker-compose.yml" "docker-compose.yaml" "compose.yml" "compose.yaml"; do
+            if sudo curl -sLf -o "${dest_file}" "${raw_base}/${path}" 2>/dev/null; then
+                log_success "成功下载 ${path} (master 分支)"
+                downloaded=1
+                break
+            fi
+        done
+    fi
+    
+    if [[ $downloaded -eq 0 ]]; then
+        log_error "未找到 docker-compose 配置文件！"
+        log_warning "请确认仓库根目录存在 docker-compose.yml 或 compose.yml"
+        sudo rm -rf "$project_dir"
+        return 1
+    fi
+    
+    echo ""
+    echo -e "  ${WHITE}${BOLD}部署信息${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    echo -e "  仓库:     ${CYAN}${owner}/${repo}${NC}"
+    echo -e "  安装目录: ${CYAN}${project_dir}${NC}"
+    echo ""
+    
+    read -p "确认部署? (y/n): " confirm </dev/tty
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then 
+        log_info "操作已取消。"
+        sudo rm -rf "$project_dir"
+        return 0
+    fi
+    
+    log_info "启动项目中..."
+    cd "$project_dir" || return 1
+    sudo docker compose up -d
+    if [[ $? -eq 0 ]]; then 
+        echo ""
+        log_success "项目 '${repo}' 已成功部署！"
+        echo ""
+        echo -e "  ${WHITE}${BOLD}项目目录${NC}"
+        echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+        echo -e "  ${project_dir}"
+    else 
+        log_error "项目部署失败！"
+        return 1
+    fi
 }
 
 # 子菜单：部署功能主菜单
@@ -3095,7 +3298,7 @@ show_deployment_menu() {
         read -p "$(echo -e ${CYAN}请选择部署方式${NC} [0-2]: )" deploy_choice </dev/tty
         case $deploy_choice in
             1) show_preset_deployment_menu ;;
-            2) log_error "功能占位，暂未实现。"; press_any_key ;;
+            2) deploy_from_github; press_any_key ;;
             0) break ;;
             *) log_error "无效输入。"; press_any_key ;;
         esac
