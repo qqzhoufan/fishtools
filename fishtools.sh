@@ -169,23 +169,15 @@ handle_args() {
             echo -e "${CYAN}  ℹ 正在安装 fish 命令...${NC}"
             local install_path="/usr/local/bin/fish"
             
-            # 检查是否已存在同名命令
-            if command -v fish &>/dev/null && [[ ! -L "$install_path" ]]; then
-                echo -e "${YELLOW}  ⚠ 检测到系统已安装 fish shell${NC}"
-                echo -e "${YELLOW}    将使用 fishtool 作为命令名${NC}"
-                install_path="/usr/local/bin/fishtool"
-            fi
-            
             # 复制脚本到目标位置
             if sudo cp "$SCRIPT_PATH" "$install_path" && sudo chmod +x "$install_path"; then
-                local cmd_name=$(basename "$install_path")
                 echo -e "${GREEN}  ✓ 安装成功！${NC}"
                 echo ""
                 echo -e "  现在可以使用以下命令:"
-                echo -e "    ${CYAN}${cmd_name}${NC}          # 启动工具箱"
-                echo -e "    ${CYAN}${cmd_name} --help${NC}   # 查看帮助"
-                echo -e "    ${CYAN}${cmd_name} --info${NC}   # 查看系统信息"
-                echo -e "    ${CYAN}${cmd_name} --bbr${NC}    # 一键开启 BBR"
+                echo -e "    ${CYAN}fish${NC}          # 启动工具箱"
+                echo -e "    ${CYAN}fish --help${NC}   # 查看帮助"
+                echo -e "    ${CYAN}fish --info${NC}   # 查看系统信息"
+                echo -e "    ${CYAN}fish --bbr${NC}    # 一键开启 BBR"
                 echo ""
             else
                 echo -e "${RED}  ✗ 安装失败，请使用 sudo 运行${NC}"
