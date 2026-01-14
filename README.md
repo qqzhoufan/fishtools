@@ -45,17 +45,17 @@
 
 ## 🚀 快速开始
 
-### 方式一：完整下载 (推荐)
+### 方式一：一键安装 (推荐)
 
 ```bash
-# 下载脚本
-curl -sL -o fishtools.sh https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fishtools.sh
+# 下载并安装 fish 命令
+curl -sL -o fishtools.sh https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fishtools.sh && chmod +x fishtools.sh && ./fishtools.sh --install
 
-# 赋予权限并运行
-chmod +x fishtools.sh && ./fishtools.sh
+# 然后就可以直接使用
+fish
 ```
 
-### 方式二：一键运行
+### 方式二：直接运行 (不安装)
 
 ```bash
 bash <(curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fishtools.sh)
