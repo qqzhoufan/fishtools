@@ -2969,6 +2969,77 @@ get_project_default_port() {
     esac
 }
 
+# 显示项目信息
+show_project_info() {
+    local project_name="$1"
+    local port=$(get_project_default_port "$project_name")
+    
+    echo -e "  ${WHITE}${BOLD}项目信息${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    
+    case "$project_name" in
+        homepage)
+            echo -e "  端口: ${CYAN}${port}${NC}"
+            echo -e "  账号: ${CYAN}无需登录${NC}"
+            echo -e "  说明: 精美个人导航仪表盘"
+            ;;
+        nginx-proxy-manager)
+            echo -e "  端口: ${CYAN}80, ${port}, 443${NC}"
+            echo -e "  账号: ${CYAN}admin@example.com${NC}"
+            echo -e "  密码: ${CYAN}changeme${NC}"
+            echo -e "  说明: 可视化反向代理管理器"
+            ;;
+        navidrome)
+            echo -e "  端口: ${CYAN}${port}${NC}"
+            echo -e "  账号: ${CYAN}首次访问自行创建${NC}"
+            echo -e "  说明: 自托管音乐流媒体服务器"
+            ;;
+        qbittorrent)
+            echo -e "  端口: ${CYAN}${port} (WebUI), 6881 (BT)${NC}"
+            echo -e "  账号: ${CYAN}admin${NC}"
+            echo -e "  密码: ${CYAN}adminadmin${NC}"
+            echo -e "  说明: 高性能 BT/磁力下载器"
+            ;;
+        moontv)
+            echo -e "  端口: ${CYAN}${port}${NC}"
+            echo -e "  账号: ${CYAN}admin${NC}"
+            echo -e "  密码: ${CYAN}admin_password${NC}"
+            echo -e "  说明: 影视聚合平台"
+            ;;
+        portainer)
+            echo -e "  端口: ${CYAN}${port}${NC}"
+            echo -e "  账号: ${CYAN}首次访问自行创建${NC}"
+            echo -e "  说明: Docker 可视化管理面板"
+            ;;
+        alist)
+            echo -e "  端口: ${CYAN}${port}${NC}"
+            echo -e "  账号: ${CYAN}admin${NC}"
+            echo -e "  密码: ${CYAN}docker logs alist 查看${NC}"
+            echo -e "  说明: 网盘聚合工具"
+            ;;
+        uptime-kuma)
+            echo -e "  端口: ${CYAN}${port}${NC}"
+            echo -e "  账号: ${CYAN}首次访问自行创建${NC}"
+            echo -e "  说明: 轻量级服务监控面板"
+            ;;
+        vaultwarden)
+            echo -e "  端口: ${CYAN}${port}${NC}"
+            echo -e "  账号: ${CYAN}首次访问自行注册${NC}"
+            echo -e "  说明: 自托管密码管理器"
+            ;;
+        filebrowser)
+            echo -e "  端口: ${CYAN}${port}${NC}"
+            echo -e "  账号: ${CYAN}admin${NC}"
+            echo -e "  密码: ${CYAN}admin${NC}"
+            echo -e "  说明: Web 文件管理器"
+            ;;
+        *)
+            echo -e "  端口: ${CYAN}${port}${NC}"
+            ;;
+    esac
+    echo ""
+}
+
 # 部署预设项目
 deploy_preset_project() {
     local project_name="$1"
@@ -2985,6 +3056,9 @@ deploy_preset_project() {
     echo ""
     log_info "即将部署精选项目: ${project_name}"
     echo ""
+    
+    # 显示项目信息
+    show_project_info "$project_name"
     
     # 检查 Docker
     if ! command -v docker &>/dev/null || ! docker compose version &>/dev/null; then 
