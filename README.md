@@ -4,7 +4,7 @@
 
 ### 咸鱼工具箱
 
-[![Version](https://img.shields.io/badge/version-v1.1-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
+[![Version](https://img.shields.io/badge/version-v1.2-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
 [![Author](https://img.shields.io/badge/author-咸鱼银河-orange.svg?style=for-the-badge)](https://github.com/qqzhoufan)
 [![Language](https://img.shields.io/badge/language-Bash-brightgreen.svg?style=for-the-badge)](https://www.gnu.org/software/bash/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
@@ -76,6 +76,7 @@ bash <(curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fisht
 │  4. 📦  常用软件安装                               │
 │  5. 🐳  Docker Compose 项目部署                    │
 │  6. ⚡  VPS 优化                                   │
+│  7. 🔧  系统工具                                   │
 │                                                  │
 └──────────────────────────────────────────────────┘
 ```
@@ -188,6 +189,44 @@ bash <(curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fisht
 | 🚄 BBR 加速 | 启用 Google BBR 拥塞控制算法，优化网络性能 |
 | 💾 SWAP 管理 | 创建/管理虚拟内存，防止内存耗尽导致崩溃 |
 | 🌍 WARP 管理 | Cloudflare WARP 服务，增加 IPv4/IPv6 支持 |
+
+---
+
+### 7. 🔧 系统工具
+
+便捷的系统维护和配置工具集。
+
+| 功能 | 说明 |
+|:---|:---|
+| 🧹 磁盘清理 | APT 缓存、系统日志、临时文件、旧内核一键清理 |
+| 🌐 修改时区 | 快速切换常用时区 |
+| 🏷️ 修改主机名 | 一键修改服务器主机名 |
+| 🔌 修改 SSH 端口 | 安全加固，自动备份配置 |
+| 📅 定时任务管理 | Cron 任务的添加/编辑/删除 |
+| 🔄 系统重启/关机 | 定时重启、立即关机等 |
+
+---
+
+### 🚀 命令行快捷方式
+
+v1.2 新增命令行参数支持，无需进入菜单即可快速执行常用操作：
+
+```bash
+# 首次使用需安装 fish 命令
+./fishtools.sh --install
+
+# 安装后即可使用 fish 命令
+fish --help      # 显示帮助信息
+fish --version   # 显示版本
+fish --update    # 检查并更新脚本
+fish --info      # 快速查看系统信息
+fish --bbr       # 一键开启 BBR
+fish --docker    # 进入 Docker 管理
+fish --test      # 进入性能测试菜单
+```
+
+> [!TIP]
+> 如果系统已安装 fish shell，会自动使用 `fishtool` 作为命令名。
 
 ---
 

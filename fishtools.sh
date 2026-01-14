@@ -12,7 +12,214 @@ set -eo pipefail
 # --- 全局配置 ---
 AUTHOR_GITHUB_USER="qqzhoufan"
 MAIN_REPO_NAME="fishtools"
-VERSION="v1.1"
+VERSION="v1.2"
+SCRIPT_PATH="$(realpath "$0" 2>/dev/null || echo "$0")"
+
+# --- 依赖检查 ---
+check_dependencies() {
+    local missing_deps=()
+    local optional_deps=()
+    
+    # 必须依赖
+    for cmd in curl; do
+        if ! command -v "$cmd" &>/dev/null; then
+            missing_deps+=("$cmd")
+        fi
+    done
+    
+    # 可选依赖（用于特定功能）
+    for cmd in bc jq dig; do
+        if ! command -v "$cmd" &>/dev/null; then
+            optional_deps+=("$cmd")
+        fi
+    done
+    
+    # 如果缺少必须依赖，尝试安装
+    if [[ ${#missing_deps[@]} -gt 0 ]]; then
+        echo -e "${YELLOW}  ⚠ 检测到缺少必要依赖: ${missing_deps[*]}${NC}"
+        echo -e "${CYAN}  ℹ 正在尝试自动安装...${NC}"
+        if command -v apt-get &>/dev/null; then
+            sudo apt-get update -qq && sudo apt-get install -y "${missing_deps[@]}" 2>/dev/null
+        elif command -v yum &>/dev/null; then
+            sudo yum install -y "${missing_deps[@]}" 2>/dev/null
+        elif command -v dnf &>/dev/null; then
+            sudo dnf install -y "${missing_deps[@]}" 2>/dev/null
+        fi
+    fi
+    
+    # 可选依赖提示
+    if [[ ${#optional_deps[@]} -gt 0 ]]; then
+        : # 静默处理，不影响正常使用
+    fi
+}
+
+# --- 更新检查 ---
+check_update() {
+    local remote_version
+    remote_version=$(curl -s --max-time 3 "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/fishtools.sh" 2>/dev/null | grep -oP 'VERSION="v\K[0-9.]+' | head -1)
+    local current_version="${VERSION#v}"
+    
+    if [[ -n "$remote_version" && "$remote_version" != "$current_version" ]]; then
+        echo ""
+        echo -e "${YELLOW}  ╭───────────────────────────────────────────╮${NC}"
+        echo -e "${YELLOW}  │${NC}  ${WHITE}${BOLD}发现新版本 ${GREEN}v${remote_version}${NC} ${DIM}(当前 ${VERSION})${NC}          ${YELLOW}│${NC}"
+        echo -e "${YELLOW}  │${NC}  运行以下命令更新:                        ${YELLOW}│${NC}"
+        echo -e "${YELLOW}  │${NC}  ${CYAN}curl -sL bit.ly/fishtools | bash${NC}        ${YELLOW}│${NC}"
+        echo -e "${YELLOW}  ╰───────────────────────────────────────────╯${NC}"
+        echo ""
+    fi
+}
+
+# --- 帮助信息 ---
+show_help() {
+    echo ""
+    echo -e "${CYAN}fishtools${NC} - 咸鱼工具箱 ${VERSION}"
+    echo ""
+    echo -e "${WHITE}用法:${NC}"
+    echo "  fish [选项]           # 安装后可直接使用"
+    echo "  ./fishtools.sh [选项] # 或直接运行脚本"
+    echo ""
+    echo -e "${WHITE}选项:${NC}"
+    echo "  -h, --help       显示帮助信息"
+    echo "  -v, --version    显示版本信息"
+    echo "  -u, --update     检查并更新脚本"
+    echo "  --install        安装 fish 命令到系统"
+    echo "  --uninstall      卸载 fish 命令"
+    echo "  --info           显示系统信息"
+    echo "  --bbr            一键开启 BBR"
+    echo "  --docker         进入 Docker 管理"
+    echo "  --test           进入性能测试菜单"
+    echo ""
+    echo -e "${WHITE}示例:${NC}"
+    echo "  fish --info      # 快速查看系统信息"
+    echo "  fish --bbr       # 一键开启 BBR"
+    echo ""
+    echo -e "${WHITE}首次安装:${NC}"
+    echo "  ./fishtools.sh --install   # 安装后即可使用 fish 命令"
+    echo ""
+}
+
+# --- 命令行参数处理 ---
+handle_args() {
+    case "$1" in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -v|--version)
+            echo "fishtools ${VERSION}"
+            exit 0
+            ;;
+        -u|--update)
+            echo -e "${CYAN}  ℹ 正在检查更新...${NC}"
+            local tmp_file="/tmp/fishtools_new.sh"
+            if curl -sL "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/fishtools.sh" -o "$tmp_file" 2>/dev/null; then
+                local remote_ver=$(grep -oP 'VERSION="v\K[0-9.]+' "$tmp_file" | head -1)
+                local current_ver="${VERSION#v}"
+                if [[ "$remote_ver" != "$current_ver" ]]; then
+                    echo -e "${GREEN}  ✓ 发现新版本 v${remote_ver}，正在更新...${NC}"
+                    chmod +x "$tmp_file"
+                    mv "$tmp_file" "$SCRIPT_PATH"
+                    echo -e "${GREEN}  ✓ 更新完成！请重新运行脚本。${NC}"
+                else
+                    echo -e "${GREEN}  ✓ 已是最新版本 ${VERSION}${NC}"
+                    rm -f "$tmp_file"
+                fi
+            else
+                echo -e "${RED}  ✗ 检查更新失败${NC}"
+            fi
+            exit 0
+            ;;
+        --info)
+            show_machine_info
+            exit 0
+            ;;
+        --bbr)
+            echo -e "${CYAN}  ℹ 正在开启 BBR...${NC}"
+            if grep -q "net.core.default_qdisc" /etc/sysctl.conf 2>/dev/null; then
+                sudo sed -i 's/net.core.default_qdisc.*/net.core.default_qdisc=fq/' /etc/sysctl.conf
+            else
+                echo "net.core.default_qdisc=fq" | sudo tee -a /etc/sysctl.conf >/dev/null
+            fi
+            if grep -q "net.ipv4.tcp_congestion_control" /etc/sysctl.conf 2>/dev/null; then
+                sudo sed -i 's/net.ipv4.tcp_congestion_control.*/net.ipv4.tcp_congestion_control=bbr/' /etc/sysctl.conf
+            else
+                echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.conf >/dev/null
+            fi
+            sudo sysctl -p >/dev/null 2>&1
+            if sysctl net.ipv4.tcp_congestion_control 2>/dev/null | grep -q bbr; then
+                echo -e "${GREEN}  ✓ BBR 已成功开启！${NC}"
+            else
+                echo -e "${RED}  ✗ BBR 开启失败，请检查内核版本${NC}"
+            fi
+            exit 0
+            ;;
+        --docker)
+            check_dependencies
+            install_docker_menu
+            exit 0
+            ;;
+        --test)
+            check_dependencies
+            show_test_menu
+            exit 0
+            ;;
+        --install)
+            echo ""
+            echo -e "${CYAN}  ℹ 正在安装 fish 命令...${NC}"
+            local install_path="/usr/local/bin/fish"
+            
+            # 检查是否已存在同名命令
+            if command -v fish &>/dev/null && [[ ! -L "$install_path" ]]; then
+                echo -e "${YELLOW}  ⚠ 检测到系统已安装 fish shell${NC}"
+                echo -e "${YELLOW}    将使用 fishtool 作为命令名${NC}"
+                install_path="/usr/local/bin/fishtool"
+            fi
+            
+            # 复制脚本到目标位置
+            if sudo cp "$SCRIPT_PATH" "$install_path" && sudo chmod +x "$install_path"; then
+                local cmd_name=$(basename "$install_path")
+                echo -e "${GREEN}  ✓ 安装成功！${NC}"
+                echo ""
+                echo -e "  现在可以使用以下命令:"
+                echo -e "    ${CYAN}${cmd_name}${NC}          # 启动工具箱"
+                echo -e "    ${CYAN}${cmd_name} --help${NC}   # 查看帮助"
+                echo -e "    ${CYAN}${cmd_name} --info${NC}   # 查看系统信息"
+                echo -e "    ${CYAN}${cmd_name} --bbr${NC}    # 一键开启 BBR"
+                echo ""
+            else
+                echo -e "${RED}  ✗ 安装失败，请使用 sudo 运行${NC}"
+            fi
+            exit 0
+            ;;
+        --uninstall)
+            echo ""
+            echo -e "${CYAN}  ℹ 正在卸载 fish 命令...${NC}"
+            local removed=0
+            if [[ -f "/usr/local/bin/fish" ]]; then
+                sudo rm -f "/usr/local/bin/fish" && removed=1
+            fi
+            if [[ -f "/usr/local/bin/fishtool" ]]; then
+                sudo rm -f "/usr/local/bin/fishtool" && removed=1
+            fi
+            if [[ $removed -eq 1 ]]; then
+                echo -e "${GREEN}  ✓ 卸载成功！${NC}"
+            else
+                echo -e "${YELLOW}  ⚠ 未找到已安装的命令${NC}"
+            fi
+            exit 0
+            ;;
+        "")
+            # 无参数，正常启动
+            return 0
+            ;;
+        *)
+            echo -e "${RED}未知选项: $1${NC}"
+            echo "使用 --help 查看帮助"
+            exit 1
+            ;;
+    esac
+}
 
 # --- 颜色和样式定义 ---
 RED='\033[0;31m'
@@ -642,13 +849,23 @@ show_service_manager() {
 install_docker_menu() {
     while true; do
         clear
-        draw_title_line "Docker 安装" 50
+        draw_title_line "Docker 管理" 50
         echo ""
         
         # 显示当前安装状态
         if command -v docker &>/dev/null; then
             local docker_ver=$(docker --version 2>/dev/null | awk '{print $3}' | tr -d ',')
             echo -e "  ${GREEN}✓${NC} Docker 已安装 (${docker_ver})"
+            if systemctl is-active --quiet docker 2>/dev/null; then
+                echo -e "  ${GREEN}●${NC} Docker 状态: ${GREEN}运行中${NC}"
+            else
+                echo -e "  ${RED}●${NC} Docker 状态: ${RED}已停止${NC}"
+            fi
+            # 显示容器和镜像数量
+            local container_count=$(docker ps -aq 2>/dev/null | wc -l)
+            local running_count=$(docker ps -q 2>/dev/null | wc -l)
+            local image_count=$(docker images -q 2>/dev/null | wc -l)
+            echo -e "  ${CYAN}容器:${NC} ${running_count}/${container_count} 运行中  ${CYAN}镜像:${NC} ${image_count} 个"
         else
             echo -e "  ${GRAY}○${NC} Docker 未安装"
         fi
@@ -661,15 +878,25 @@ install_docker_menu() {
         fi
         echo ""
         
-        draw_menu_item "1" "🌍" "使用官方源安装 (国外服务器推荐)"
-        draw_menu_item "2" "🇨🇳" "使用阿里云源安装 (国内服务器推荐)"
+        echo -e "  ${WHITE}${BOLD}【安装与卸载】${NC}"
+        draw_menu_item "1" "🌍" "使用官方源安装 (国外推荐)"
+        draw_menu_item "2" "🇨🇳" "使用阿里云源安装 (国内推荐)"
         draw_menu_item "3" "🗑️" "卸载 Docker"
+        echo ""
+        echo -e "  ${WHITE}${BOLD}【容器管理】${NC}"
+        draw_menu_item "4" "📋" "查看容器列表"
+        draw_menu_item "5" "▶️" "启动/停止/重启容器"
+        draw_menu_item "6" "📝" "查看容器日志"
+        echo ""
+        echo -e "  ${WHITE}${BOLD}【镜像与清理】${NC}"
+        draw_menu_item "7" "🖼️" "查看镜像列表"
+        draw_menu_item "8" "🧹" "清理 Docker 空间"
         echo ""
         draw_separator 50
         draw_menu_item "0" "🔙" "返回上级菜单"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-3]: )" docker_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-8]: )" docker_choice </dev/tty
         
         case $docker_choice in
             1)
@@ -747,6 +974,161 @@ install_docker_menu() {
                 sudo rm -rf /etc/docker
                 echo ""
                 log_success "Docker 已完全卸载！"
+                press_any_key
+                ;;
+            4)
+                clear
+                draw_title_line "容器列表" 50
+                echo ""
+                if ! command -v docker &>/dev/null; then
+                    log_error "Docker 未安装！"
+                    press_any_key
+                    continue
+                fi
+                echo -e "  ${WHITE}${BOLD}运行中的容器${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "  暂无运行中的容器"
+                echo ""
+                echo -e "  ${WHITE}${BOLD}所有容器${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" 2>/dev/null || echo "  暂无容器"
+                press_any_key
+                ;;
+            5)
+                clear
+                draw_title_line "容器操作" 50
+                echo ""
+                if ! command -v docker &>/dev/null; then
+                    log_error "Docker 未安装！"
+                    press_any_key
+                    continue
+                fi
+                docker ps -a --format "table {{.Names}}\t{{.Status}}" 2>/dev/null
+                echo ""
+                read -p "请输入容器名称: " container_name </dev/tty
+                if [[ -z "$container_name" ]]; then
+                    press_any_key
+                    continue
+                fi
+                echo ""
+                echo -e "  ${CYAN}1.${NC} 启动"
+                echo -e "  ${CYAN}2.${NC} 停止"
+                echo -e "  ${CYAN}3.${NC} 重启"
+                echo -e "  ${CYAN}4.${NC} 删除"
+                echo ""
+                read -p "请选择操作: " op </dev/tty
+                case $op in
+                    1) docker start "$container_name" && log_success "容器已启动" ;;
+                    2) docker stop "$container_name" && log_success "容器已停止" ;;
+                    3) docker restart "$container_name" && log_success "容器已重启" ;;
+                    4)
+                        read -p "确认删除容器 $container_name? (y/n): " confirm </dev/tty
+                        if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                            docker rm -f "$container_name" && log_success "容器已删除"
+                        fi
+                        ;;
+                esac
+                press_any_key
+                ;;
+            6)
+                clear
+                draw_title_line "容器日志" 50
+                echo ""
+                if ! command -v docker &>/dev/null; then
+                    log_error "Docker 未安装！"
+                    press_any_key
+                    continue
+                fi
+                docker ps --format "{{.Names}}" 2>/dev/null
+                echo ""
+                read -p "请输入容器名称: " container_name </dev/tty
+                if [[ -n "$container_name" ]]; then
+                    echo ""
+                    echo -e "  ${DIM}(按 Ctrl+C 退出日志查看)${NC}"
+                    echo ""
+                    docker logs -f --tail 100 "$container_name" 2>/dev/null || log_error "无法获取日志"
+                fi
+                press_any_key
+                ;;
+            7)
+                clear
+                draw_title_line "镜像列表" 50
+                echo ""
+                if ! command -v docker &>/dev/null; then
+                    log_error "Docker 未安装！"
+                    press_any_key
+                    continue
+                fi
+                echo -e "  ${WHITE}${BOLD}本地镜像${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                docker images --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}" 2>/dev/null || echo "  暂无镜像"
+                echo ""
+                # 显示磁盘占用
+                local disk_usage=$(docker system df 2>/dev/null | grep -E "^(Images|Containers|Volumes)" || true)
+                if [[ -n "$disk_usage" ]]; then
+                    echo -e "  ${WHITE}${BOLD}磁盘占用${NC}"
+                    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                    echo "$disk_usage" | while read line; do echo "  $line"; done
+                fi
+                press_any_key
+                ;;
+            8)
+                clear
+                draw_title_line "清理 Docker 空间" 50
+                echo ""
+                if ! command -v docker &>/dev/null; then
+                    log_error "Docker 未安装！"
+                    press_any_key
+                    continue
+                fi
+                
+                # 显示当前占用
+                echo -e "  ${WHITE}${BOLD}当前 Docker 磁盘占用${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                docker system df 2>/dev/null || true
+                echo ""
+                
+                echo -e "  ${CYAN}1.${NC} 清理悬空镜像 (无标签镜像)"
+                echo -e "  ${CYAN}2.${NC} 清理已停止的容器"
+                echo -e "  ${CYAN}3.${NC} 清理未使用的网络"
+                echo -e "  ${CYAN}4.${NC} 全部清理 (推荐)"
+                echo -e "  ${RED}5.${NC} 深度清理 (包括未使用的卷，谨慎!)"
+                echo ""
+                read -p "请选择清理方式: " clean_choice </dev/tty
+                echo ""
+                case $clean_choice in
+                    1)
+                        log_info "清理悬空镜像..."
+                        docker image prune -f
+                        ;;
+                    2)
+                        log_info "清理已停止的容器..."
+                        docker container prune -f
+                        ;;
+                    3)
+                        log_info "清理未使用的网络..."
+                        docker network prune -f
+                        ;;
+                    4)
+                        log_info "执行全面清理..."
+                        docker system prune -f
+                        ;;
+                    5)
+                        echo -e "  ${RED}${BOLD}⚠ 警告：这将删除所有未使用的卷数据！${NC}"
+                        read -p "请输入 'yes' 确认: " confirm </dev/tty
+                        if [[ "$confirm" == "yes" ]]; then
+                            docker system prune -a --volumes -f
+                        else
+                            log_info "操作已取消"
+                        fi
+                        ;;
+                esac
+                echo ""
+                log_success "清理完成！"
+                echo ""
+                echo -e "  ${WHITE}${BOLD}清理后磁盘占用${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                docker system df 2>/dev/null || true
                 press_any_key
                 ;;
             0)
@@ -2686,6 +3068,298 @@ show_deployment_menu() {
     done
 }
 
+# ================== 系统工具菜单 ==================
+show_system_tools_menu() {
+    while true; do
+        clear
+        draw_title_line "系统工具" 50
+        echo ""
+        draw_menu_item "1" "🧹" "磁盘清理"
+        draw_menu_item "2" "🌐" "修改时区"
+        draw_menu_item "3" "🏷️" "修改主机名"
+        draw_menu_item "4" "🔌" "修改 SSH 端口"
+        draw_menu_item "5" "📅" "定时任务管理"
+        draw_menu_item "6" "🔄" "系统重启/关机"
+        echo ""
+        draw_separator 50
+        draw_menu_item "0" "🔙" "返回主菜单"
+        draw_footer 50
+        echo ""
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-6]: )" tools_choice </dev/tty
+        
+        case $tools_choice in
+            1)
+                clear
+                draw_title_line "磁盘清理" 50
+                echo ""
+                
+                # 显示当前磁盘使用情况
+                echo -e "  ${WHITE}${BOLD}当前磁盘使用情况${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                df -h / | awk 'NR==1{print "  "$0} NR==2{print "  "$0}'
+                echo ""
+                
+                # 计算可清理空间
+                local apt_cache=$(du -sh /var/cache/apt/archives 2>/dev/null | awk '{print $1}' || echo "0")
+                local journal=$(du -sh /var/log/journal 2>/dev/null | awk '{print $1}' || echo "0")
+                local tmp_size=$(du -sh /tmp 2>/dev/null | awk '{print $1}' || echo "0")
+                local old_kernels=$(dpkg -l 'linux-*' 2>/dev/null | grep -E '^ii' | wc -l)
+                
+                echo -e "  ${WHITE}${BOLD}可清理项目${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                echo -e "  ${CYAN}1.${NC} APT 缓存            约 ${apt_cache}"
+                echo -e "  ${CYAN}2.${NC} 系统日志 (Journal)  约 ${journal}"
+                echo -e "  ${CYAN}3.${NC} 临时文件 (/tmp)     约 ${tmp_size}"
+                echo -e "  ${CYAN}4.${NC} 旧内核 (保留当前)   ${old_kernels} 个包"
+                echo -e "  ${CYAN}5.${NC} 一键清理全部"
+                echo ""
+                
+                read -p "请选择要清理的项目 [1-5]: " clean_opt </dev/tty
+                echo ""
+                
+                case $clean_opt in
+                    1)
+                        log_info "清理 APT 缓存..."
+                        sudo apt-get clean
+                        log_success "APT 缓存已清理"
+                        ;;
+                    2)
+                        log_info "清理系统日志..."
+                        sudo journalctl --vacuum-time=7d 2>/dev/null || true
+                        log_success "日志已清理（保留7天）"
+                        ;;
+                    3)
+                        log_info "清理临时文件..."
+                        sudo rm -rf /tmp/* 2>/dev/null || true
+                        log_success "临时文件已清理"
+                        ;;
+                    4)
+                        log_info "清理旧内核..."
+                        sudo apt-get autoremove --purge -y 2>/dev/null || true
+                        log_success "旧内核已清理"
+                        ;;
+                    5)
+                        log_info "执行一键清理..."
+                        sudo apt-get clean
+                        sudo apt-get autoremove --purge -y 2>/dev/null || true
+                        sudo journalctl --vacuum-time=7d 2>/dev/null || true
+                        sudo rm -rf /tmp/* 2>/dev/null || true
+                        # 清理用户缓存
+                        rm -rf ~/.cache/* 2>/dev/null || true
+                        log_success "全部清理完成！"
+                        ;;
+                esac
+                
+                echo ""
+                echo -e "  ${WHITE}${BOLD}清理后磁盘使用${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                df -h / | awk 'NR==2{print "  "$0}'
+                press_any_key
+                ;;
+            2)
+                clear
+                draw_title_line "修改时区" 50
+                echo ""
+                echo -e "  ${WHITE}${BOLD}当前时区${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                echo -e "  $(timedatectl 2>/dev/null | grep 'Time zone' | awk -F': ' '{print $2}' || date +%Z)"
+                echo ""
+                echo -e "  ${WHITE}${BOLD}常用时区${NC}"
+                echo -e "  ${CYAN}1.${NC} Asia/Shanghai     (中国-上海)"
+                echo -e "  ${CYAN}2.${NC} Asia/Hong_Kong    (中国-香港)"
+                echo -e "  ${CYAN}3.${NC} Asia/Tokyo        (日本-东京)"
+                echo -e "  ${CYAN}4.${NC} Asia/Singapore    (新加坡)"
+                echo -e "  ${CYAN}5.${NC} America/New_York  (美国-纽约)"
+                echo -e "  ${CYAN}6.${NC} America/Los_Angeles (美国-洛杉矶)"
+                echo -e "  ${CYAN}7.${NC} Europe/London     (英国-伦敦)"
+                echo -e "  ${CYAN}8.${NC} 自定义输入"
+                echo ""
+                read -p "请选择时区 [1-8]: " tz_choice </dev/tty
+                
+                local new_tz=""
+                case $tz_choice in
+                    1) new_tz="Asia/Shanghai" ;;
+                    2) new_tz="Asia/Hong_Kong" ;;
+                    3) new_tz="Asia/Tokyo" ;;
+                    4) new_tz="Asia/Singapore" ;;
+                    5) new_tz="America/New_York" ;;
+                    6) new_tz="America/Los_Angeles" ;;
+                    7) new_tz="Europe/London" ;;
+                    8)
+                        read -p "请输入时区 (如 Asia/Shanghai): " new_tz </dev/tty
+                        ;;
+                esac
+                
+                if [[ -n "$new_tz" ]]; then
+                    sudo timedatectl set-timezone "$new_tz" 2>/dev/null || \
+                    sudo ln -sf "/usr/share/zoneinfo/$new_tz" /etc/localtime
+                    log_success "时区已设置为: $new_tz"
+                    echo -e "  当前时间: $(date)"
+                fi
+                press_any_key
+                ;;
+            3)
+                clear
+                draw_title_line "修改主机名" 50
+                echo ""
+                echo -e "  ${WHITE}${BOLD}当前主机名${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                echo -e "  $(hostname)"
+                echo ""
+                read -p "请输入新主机名: " new_hostname </dev/tty
+                
+                if [[ -n "$new_hostname" ]]; then
+                    sudo hostnamectl set-hostname "$new_hostname" 2>/dev/null || \
+                    echo "$new_hostname" | sudo tee /etc/hostname >/dev/null
+                    # 更新 /etc/hosts
+                    sudo sed -i "s/127.0.1.1.*/127.0.1.1\t$new_hostname/" /etc/hosts 2>/dev/null || true
+                    log_success "主机名已设置为: $new_hostname"
+                    echo -e "  ${YELLOW}提示: 重新登录后生效${NC}"
+                fi
+                press_any_key
+                ;;
+            4)
+                clear
+                draw_title_line "修改 SSH 端口" 50
+                echo ""
+                local current_port=$(grep -E "^Port" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' || echo "22")
+                [[ -z "$current_port" ]] && current_port="22"
+                
+                echo -e "  ${WHITE}${BOLD}当前 SSH 端口${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                echo -e "  ${current_port}"
+                echo ""
+                echo -e "  ${YELLOW}⚠ 警告：修改端口前请确保新端口已在防火墙中开放！${NC}"
+                echo ""
+                read -p "请输入新 SSH 端口 (1024-65535): " new_port </dev/tty
+                
+                if [[ "$new_port" =~ ^[0-9]+$ ]] && [[ "$new_port" -ge 1024 ]] && [[ "$new_port" -le 65535 ]]; then
+                    # 备份配置
+                    sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak.$(date +%Y%m%d%H%M%S)
+                    
+                    # 修改端口
+                    if grep -q "^Port" /etc/ssh/sshd_config; then
+                        sudo sed -i "s/^Port.*/Port $new_port/" /etc/ssh/sshd_config
+                    elif grep -q "^#Port" /etc/ssh/sshd_config; then
+                        sudo sed -i "s/^#Port.*/Port $new_port/" /etc/ssh/sshd_config
+                    else
+                        echo "Port $new_port" | sudo tee -a /etc/ssh/sshd_config >/dev/null
+                    fi
+                    
+                    # 尝试在防火墙中开放新端口
+                    if command -v ufw &>/dev/null; then
+                        sudo ufw allow "$new_port"/tcp 2>/dev/null || true
+                    fi
+                    
+                    log_success "SSH 端口已修改为: $new_port"
+                    echo ""
+                    echo -e "  ${RED}${BOLD}重要提示：${NC}"
+                    echo -e "  1. 请确保防火墙已开放端口 $new_port"
+                    echo -e "  2. 新开一个终端测试: ${CYAN}ssh -p $new_port user@ip${NC}"
+                    echo -e "  3. 确认能连接后再关闭当前终端"
+                    echo ""
+                    read -p "是否立即重启 SSH 服务? (y/n): " restart_ssh </dev/tty
+                    if [[ "$restart_ssh" == "y" || "$restart_ssh" == "Y" ]]; then
+                        sudo systemctl restart sshd 2>/dev/null || sudo service ssh restart
+                        log_success "SSH 服务已重启"
+                    fi
+                else
+                    log_error "无效端口号！请输入 1024-65535 之间的数字"
+                fi
+                press_any_key
+                ;;
+            5)
+                clear
+                draw_title_line "定时任务管理" 50
+                echo ""
+                echo -e "  ${WHITE}${BOLD}当前用户的 Cron 任务${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                crontab -l 2>/dev/null || echo "  暂无定时任务"
+                echo ""
+                draw_menu_item "1" "➕" "添加定时任务"
+                draw_menu_item "2" "📝" "编辑定时任务"
+                draw_menu_item "3" "🗑️" "清空所有任务"
+                echo ""
+                read -p "请选择操作 [1-3]: " cron_opt </dev/tty
+                
+                case $cron_opt in
+                    1)
+                        echo ""
+                        echo -e "  ${WHITE}${BOLD}Cron 时间格式说明${NC}"
+                        echo -e "  ${GRAY}分 时 日 月 周 命令${NC}"
+                        echo -e "  ${DIM}示例: 0 2 * * * /path/to/script.sh (每天凌晨2点执行)${NC}"
+                        echo ""
+                        read -p "请输入 Cron 表达式 (如 0 2 * * *): " cron_expr </dev/tty
+                        read -p "请输入要执行的命令: " cron_cmd </dev/tty
+                        if [[ -n "$cron_expr" && -n "$cron_cmd" ]]; then
+                            (crontab -l 2>/dev/null; echo "$cron_expr $cron_cmd") | crontab -
+                            log_success "定时任务已添加"
+                        fi
+                        ;;
+                    2)
+                        crontab -e
+                        ;;
+                    3)
+                        read -p "确认清空所有定时任务? (y/n): " confirm </dev/tty
+                        if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                            crontab -r 2>/dev/null || true
+                            log_success "定时任务已清空"
+                        fi
+                        ;;
+                esac
+                press_any_key
+                ;;
+            6)
+                clear
+                draw_title_line "系统重启/关机" 50
+                echo ""
+                echo -e "  ${RED}${BOLD}⚠ 警告：此操作将中断所有服务！${NC}"
+                echo ""
+                echo -e "  ${CYAN}1.${NC} 立即重启"
+                echo -e "  ${CYAN}2.${NC} 立即关机"
+                echo -e "  ${CYAN}3.${NC} 定时重启 (分钟后)"
+                echo ""
+                read -p "请选择操作 [1-3]: " power_opt </dev/tty
+                
+                case $power_opt in
+                    1)
+                        read -p "确认立即重启? (y/n): " confirm </dev/tty
+                        if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                            log_warning "系统将在 5 秒后重启..."
+                            sleep 5
+                            sudo reboot
+                        fi
+                        ;;
+                    2)
+                        read -p "确认立即关机? (y/n): " confirm </dev/tty
+                        if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                            log_warning "系统将在 5 秒后关机..."
+                            sleep 5
+                            sudo poweroff
+                        fi
+                        ;;
+                    3)
+                        read -p "请输入分钟数: " minutes </dev/tty
+                        if [[ "$minutes" =~ ^[0-9]+$ ]]; then
+                            sudo shutdown -r +"$minutes" "System will reboot in $minutes minutes"
+                            log_success "已设置 $minutes 分钟后重启"
+                            echo -e "  ${DIM}取消命令: sudo shutdown -c${NC}"
+                        fi
+                        ;;
+                esac
+                press_any_key
+                ;;
+            0)
+                break
+                ;;
+            *)
+                log_error "无效输入。"
+                press_any_key
+                ;;
+        esac
+    done
+}
+
 # 主菜单和执行逻辑
 main() {
     while true; do
@@ -2699,12 +3373,13 @@ main() {
         draw_menu_item "4" "📦" "常用软件安装"
         draw_menu_item "5" "🐳" "Docker Compose 项目部署"
         draw_menu_item "6" "⚡" "VPS 优化"
+        draw_menu_item "7" "🔧" "系统工具"
         echo ""
         draw_separator 50
         draw_menu_item "0" "👋" "退出脚本"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-6]: )" main_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-7]: )" main_choice </dev/tty
 
         case $main_choice in
             1) show_status_menu ;;
@@ -2713,6 +3388,7 @@ main() {
             4) show_install_menu ;;
             5) show_deployment_menu ;;
             6) show_optimization_menu ;;
+            7) show_system_tools_menu ;;
             0) 
                 echo ""
                 echo -e "  ${CYAN}感谢使用 fishtools，再见！${NC} 👋"
@@ -2725,4 +3401,7 @@ main() {
 }
 
 # 脚本启动入口
+handle_args "$@"
+check_dependencies
+check_update
 main
