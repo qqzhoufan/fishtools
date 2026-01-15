@@ -1,0 +1,15 @@
+services:
+  adguardhome:
+    image: adguard/adguardhome:latest
+    container_name: adguardhome
+    restart: unless-stopped
+    ports:
+      - "3004:3000"  # Web UI (初始配置)
+      - "53:53/tcp"  # DNS
+      - "53:53/udp"  # DNS
+      - "853:853"  # DNS-over-TLS
+    volumes:
+      - ./work:/opt/adguardhome/work
+      - ./conf:/opt/adguardhome/conf
+    environment:
+      - TZ=Asia/Shanghai

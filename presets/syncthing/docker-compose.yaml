@@ -1,0 +1,17 @@
+services:
+  syncthing:
+    image: linuxserver/syncthing:latest
+    container_name: syncthing
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./config:/config
+      - ./sync:/sync
+    ports:
+      - "8384:8384"  # Web UI
+      - "22000:22000/tcp"  # 文件传输
+      - "22000:22000/udp"  # 文件传输
+      - "21027:21027/udp"  # 设备发现

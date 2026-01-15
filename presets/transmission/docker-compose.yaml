@@ -1,0 +1,19 @@
+services:
+  transmission:
+    image: linuxserver/transmission:latest
+    container_name: transmission
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Shanghai
+      - USER=admin
+      - PASS=admin123
+    volumes:
+      - ./config:/config
+      - ./downloads:/downloads
+      - ./watch:/watch
+    ports:
+      - "9091:9091"  # Web UI
+      - "51413:51413"  # BT 端口
+      - "51413:51413/udp"

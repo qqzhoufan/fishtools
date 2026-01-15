@@ -1,0 +1,19 @@
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    ports:
+      - "8096:8096"
+      - "8920:8920"  # HTTPS 端口（可选）
+    volumes:
+      - ./config:/config
+      - ./cache:/cache
+      - ./media:/media
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Shanghai
+    # 如需硬件加速，取消下面的注释
+    # devices:
+    #   - /dev/dri:/dev/dri  # Intel GPU
