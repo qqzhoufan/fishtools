@@ -3212,16 +3212,26 @@ show_preset_deployment_menu() {
         draw_menu_item "6" "🎵" "Navidrome (音乐服务器)"
         draw_menu_item "7" "📥" "qBittorrent (下载器)"
         draw_menu_item "8" "📺" "MoonTV (观影聚合)"
+        draw_menu_item "9" "🎬" "Jellyfin (媒体服务器)"
+        draw_menu_item "10" "📷" "PhotoPrism (AI 照片管理)"
         echo ""
         echo -e "  ${WHITE}${BOLD}【工具应用】${NC}"
-        draw_menu_item "9" "🔐" "Vaultwarden (密码管理器)"
-        draw_menu_item "10" "📂" "FileBrowser (文件管理器)"
+        draw_menu_item "11" "🔐" "Vaultwarden (密码管理器)"
+        draw_menu_item "12" "📂" "FileBrowser (文件管理器)"
+        draw_menu_item "13" "☁️" "Nextcloud (私有云盘)"
+        draw_menu_item "14" "🔧" "Gitea (Git 服务)"
+        draw_menu_item "15" "📚" "Calibre-Web (电子书管理)"
+        draw_menu_item "16" "🔄" "Syncthing (文件同步)"
+        echo ""
+        echo -e "  ${WHITE}${BOLD}【网络工具】${NC}"
+        draw_menu_item "17" "🌐" "AdGuard Home (DNS 广告过滤)"
+        draw_menu_item "18" "⬇️" "Transmission (BT 下载)"
         echo ""
         draw_separator 50
         draw_menu_item "0" "🔙" "返回上一级菜单"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请选择要部署的项目${NC} [0-10]: )" preset_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请选择要部署的项目${NC} [0-18]: )" preset_choice </dev/tty
         
         local project_to_deploy=""
         case $preset_choice in
@@ -3233,8 +3243,16 @@ show_preset_deployment_menu() {
             6) project_to_deploy="navidrome" ;;
             7) project_to_deploy="qbittorrent" ;;
             8) project_to_deploy="moontv" ;;
-            9) project_to_deploy="vaultwarden" ;;
-            10) project_to_deploy="filebrowser" ;;
+            9) project_to_deploy="jellyfin" ;;
+            10) project_to_deploy="photoprism" ;;
+            11) project_to_deploy="vaultwarden" ;;
+            12) project_to_deploy="filebrowser" ;;
+            13) project_to_deploy="nextcloud" ;;
+            14) project_to_deploy="gitea" ;;
+            15) project_to_deploy="calibre-web" ;;
+            16) project_to_deploy="syncthing" ;;
+            17) project_to_deploy="adguardhome" ;;
+            18) project_to_deploy="transmission" ;;
             0) break ;;
             *) log_error "无效输入。"; press_any_key; continue ;;
         esac
