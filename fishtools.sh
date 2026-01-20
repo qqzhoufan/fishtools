@@ -3689,6 +3689,577 @@ show_system_tools_menu() {
     done
 }
 
+# ================== Gost 隧道管理菜单 ==================
+
+# 加载 gost 管理脚本
+source "${SCRIPT_PATH%/*}/scripts/gost_manager.sh" 2>/dev/null || {
+    GOST_SCRIPT_DIR="$(dirname "$SCRIPT_PATH")/scripts"
+    [[ -f "$GOST_SCRIPT_DIR/gost_manager.sh" ]] && source "$GOST_SCRIPT_DIR/gost_manager.sh"
+}
+
+# Gost 主菜单
+show_gost_menu() {
+    # 初始化 gost 管理器
+    if ! init_gost_manager 2>/dev/null; then
+        clear
+        draw_title_line "Gost 隧道管理" 50
+        echo ""
+        log_error "缺少必要依赖 jq，正在尝试安装..."
+        echo ""
+        sudo apt-get update && sudo apt-get install -y jq
+        if ! check_jq; then
+            log_error "jq 安装失败，无法使用 Gost 管理功能"
+            press_any_key
+            return 1
+        fi
+        init_gost_manager
+    fi
+    
+    while true; do
+        clear
+        draw_title_line "Gost 隧道管理" 50
+        echo ""
+        
+        # 显示统计信息
+        local relay_count=$(count_relay_nodes 2>/dev/null || echo "0")
+        local target_count=$(count_target_nodes 2>/dev/null || echo "0")
+        echo -e "  ${WHITE}${BOLD}当前状态${NC}"
+        echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+        echo -e "  线路鸡（中转节点）: ${CYAN}${relay_count}${NC} 个"
+        echo -e "  落地鸡（目标节点）: ${CYAN}${target_count}${NC} 个"
+        echo ""
+        
+        draw_menu_item "1" "🚀" "线路鸡（中转节点）管理"
+        draw_menu_item "2" "🎯" "落地鸡（目标节点）管理"
+        draw_menu_item "3" "🔗" "配置节点关联"
+        draw_menu_item "4" "📋" "查看当前配置"
+        draw_menu_item "5" "⚙️" "生成配置脚本"
+        draw_menu_item "6" "🗑️" "清除所有配置"
+        echo ""
+        draw_separator 50
+        draw_menu_item "0" "🔙" "返回主菜单"
+        draw_footer 50
+        echo ""
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-6]: )" gost_choice </dev/tty
+        
+        case $gost_choice in
+            1) show_relay_nodes_menu ;;
+            2) show_target_nodes_menu ;;
+            3) show_link_nodes_menu ;;
+            4) show_gost_config ;;
+            5) generate_all_gost_scripts ;;
+            6) clear_all_gost_config ;;
+            0) break ;;
+            *) log_error "无效输入。"; press_any_key ;;
+        esac
+    done
+}
+
+# 线路鸡管理子菜单
+show_relay_nodes_menu() {
+    while true; do
+        clear
+        draw_title_line "线路鸡管理" 50
+        echo ""
+        
+        # 显示现有线路鸡列表
+        echo -e "  ${WHITE}${BOLD}现有线路鸡节点${NC}"
+        echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+        
+        local config=$(load_gost_config)
+        local relay_count=$(echo "$config" | jq '.relay_nodes | length')
+        
+        if [[ "$relay_count" -eq 0 ]]; then
+            echo -e "  ${DIM}暂无线路鸡节点${NC}"
+        else
+            echo "$config" | jq -r '.relay_nodes[] | "  [\(.id)] \(.name) - \(.ip):\(.ssh_port) (关联: \(.targets | length)个目标)"'
+        fi
+        
+        echo ""
+        draw_menu_item "1" "➕" "添加线路鸡节点"
+        draw_menu_item "2" "🗑️" "删除线路鸡节点"
+        echo ""
+        draw_separator 50
+        draw_menu_item "0" "🔙" "返回上级菜单"
+        draw_footer 50
+        echo ""
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-2]: )" relay_choice </dev/tty
+        
+        case $relay_choice in
+            1)
+                clear
+                draw_title_line "添加线路鸡节点" 50
+                echo ""
+                
+                read -p "节点名称 (如: 香港中转): " node_name </dev/tty
+                [[ -z "$node_name" ]] && { log_warning "操作已取消"; press_any_key; continue; }
+                
+                read -p "节点 IP 地址: " node_ip </dev/tty
+                [[ -z "$node_ip" ]] && { log_warning "操作已取消"; press_any_key; continue; }
+                
+                echo ""
+                echo -e "  ${YELLOW}提示：线路鸡使用 TLS 转发模式，不需要 SSH 访问${NC}"
+                echo ""
+                log_info "正在添加线路鸡节点..."
+                local new_id=$(add_relay_node "$node_name" "$node_ip")
+                
+                if [[ $? -eq 0 ]]; then
+                    log_success "线路鸡节点已添加！ID: $new_id"
+                else
+                    log_error "添加失败"
+                fi
+                press_any_key
+                ;;
+            2)
+                if [[ "$relay_count" -eq 0 ]]; then
+                    log_warning "暂无线路鸡节点可删除"
+                    press_any_key
+                    continue
+                fi
+                
+                clear
+                draw_title_line "删除线路鸡节点" 50
+                echo ""
+                
+                echo -e "  ${WHITE}${BOLD}现有线路鸡节点${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                echo "$config" | jq -r '.relay_nodes[] | "  \(.id) - \(.name)"'
+                echo ""
+                
+                read -p "请输入要删除的节点ID: " delete_id </dev/tty
+                [[ -z "$delete_id" ]] && { log_warning "操作已取消"; press_any_key; continue; }
+                
+                read -p "确认删除节点 $delete_id? (y/n): " confirm </dev/tty
+                if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                    delete_relay_node "$delete_id"
+                    log_success "节点已删除"
+                else
+                    log_info "操作已取消"
+                fi
+                press_any_key
+                ;;
+            0) break ;;
+            *) log_error "无效输入。"; press_any_key ;;
+        esac
+    done
+}
+
+# 落地鸡管理子菜单
+show_target_nodes_menu() {
+    while true; do
+        clear
+        draw_title_line "落地鸡管理" 50
+        echo ""
+        
+        # 显示现有落地鸡列表
+        echo -e "  ${WHITE}${BOLD}现有落地鸡节点${NC}"
+        echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+        
+        local config=$(load_gost_config)
+        local target_count=$(echo "$config" | jq '.target_nodes | length')
+        
+        if [[ "$target_count" -eq 0 ]]; then
+            echo -e "  ${DIM}暂无落地鸡节点${NC}"
+        else
+            echo "$config" | jq -r '.target_nodes[] | "  [\(.id)] \(.name) - \(.ip):\(.ssh_port)"'
+        fi
+        
+        echo ""
+        draw_menu_item "1" "➕" "添加落地鸡节点"
+        draw_menu_item "2" "🗑️" "删除落地鸡节点"
+        echo ""
+        draw_separator 50
+        draw_menu_item "0" "🔙" "返回上级菜单"
+        draw_footer 50
+        echo ""
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-2]: )" target_choice </dev/tty
+        
+        case $target_choice in
+            1)
+                clear
+                draw_title_line "添加落地鸡节点" 50
+                echo ""
+                
+                read -p "节点名称 (如: 美国落地): " node_name </dev/tty
+                [[ -z "$node_name" ]] && { log_warning "操作已取消"; press_any_key; continue; }
+                
+                read -p "节点 IP 地址: " node_ip </dev/tty
+                [[ -z "$node_ip" ]] && { log_warning "操作已取消"; press_any_key; continue; }
+                
+                read -p "TLS 监听端口 [8443]: " tls_port </dev/tty
+                tls_port=${tls_port:-8443}
+                
+                read -p "转发目标 [127.0.0.1:80]: " forward_target </dev/tty
+                forward_target=${forward_target:-127.0.0.1:80}
+                
+                echo ""
+                echo -e "  ${YELLOW}提示：落地鸡需要运行 gost 监听 TLS 端口 $tls_port${NC}"
+                echo ""
+                log_info "正在添加落地鸡节点..."
+                local new_id=$(add_target_node "$node_name" "$node_ip" "$tls_port" "$forward_target")
+                
+                if [[ $? -eq 0 ]]; then
+                    log_success "落地鸡节点已添加！ID: $new_id"
+                    echo ""
+                    echo -e "  ${YELLOW}提示：新节点已添加，但尚未与任何线路鸡关联${NC}"
+                    echo -e "  ${DIM}请在「配置节点关联」菜单中配置转发关系${NC}"
+                else
+                    log_error "添加失败"
+                fi
+                press_any_key
+                ;;
+            2)
+                if [[ "$target_count" -eq 0 ]]; then
+                    log_warning "暂无落地鸡节点可删除"
+                    press_any_key
+                    continue
+                fi
+                
+                clear
+                draw_title_line "删除落地鸡节点" 50
+                echo ""
+                
+                echo -e "  ${WHITE}${BOLD}现有落地鸡节点${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                echo "$config" | jq -r '.target_nodes[] | "  \(.id) - \(.name)"'
+                echo ""
+                
+                read -p "请输入要删除的节点ID: " delete_id </dev/tty
+                [[ -z "$delete_id" ]] && { log_warning "操作已取消"; press_any_key; continue; }
+                
+                echo ""
+                log_warning "删除落地鸡节点将同时移除所有线路鸡的关联"
+                read -p "确认删除节点 $delete_id? (y/n): " confirm </dev/tty
+                if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+                    delete_target_node "$delete_id"
+                    log_success "节点已删除，相关关联已自动清除"
+                else
+                    log_info "操作已取消"
+                fi
+                press_any_key
+                ;;
+            0) break ;;
+            *) log_error "无效输入。"; press_any_key ;;
+        esac
+    done
+}
+
+# 配置节点关联菜单
+show_link_nodes_menu() {
+    while true; do
+        clear
+        draw_title_line "配置节点关联" 50
+        echo ""
+        
+        local config=$(load_gost_config)
+        local relay_count=$(echo "$config" | jq '.relay_nodes | length')
+        local target_count=$(echo "$config" | jq '.target_nodes | length')
+        
+        if [[ "$relay_count" -eq 0 || "$target_count" -eq 0 ]]; then
+            echo -e "  ${YELLOW}⚠ 请先添加线路鸡和落地鸡节点${NC}"
+            echo ""
+            echo -e "  当前线路鸡: ${CYAN}${relay_count}${NC} 个"
+            echo -e "  当前落地鸡: ${CYAN}${target_count}${NC} 个"
+            echo ""
+            press_any_key
+            break
+        fi
+        
+        draw_menu_item "1" "➕" "添加关联"
+        draw_menu_item "2" "🗑️" "删除关联"
+        draw_menu_item "3" "📋" "查看关联关系"
+        echo ""
+        draw_separator 50
+        draw_menu_item "0" "🔙" "返回上级菜单"
+        draw_footer 50
+        echo ""
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-3]: )" link_choice </dev/tty
+        
+        case $link_choice in
+            1)
+                clear
+                draw_title_line "添加节点关联" 50
+                echo ""
+                
+                echo -e "  ${WHITE}${BOLD}线路鸡节点${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                echo "$config" | jq -r '.relay_nodes[] | "  \(.id) - \(.name)"'
+                echo ""
+                
+                read -p "请输入线路鸡ID: " relay_id </dev/tty
+                [[ -z "$relay_id" ]] && { log_warning "操作已取消"; press_any_key; continue; }
+                
+                # 验证线路鸡是否存在
+                local relay_exists=$(echo "$config" | jq -r ".relay_nodes[] | select(.id == \"$relay_id\") | .id")
+                if [[ -z "$relay_exists" ]]; then
+                    log_error "线路鸡节点不存在"
+                    press_any_key
+                    continue
+                fi
+                
+                echo ""
+                echo -e "  ${WHITE}${BOLD}落地鸡节点${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                echo "$config" | jq -r '.target_nodes[] | "  \(.id) - \(.name)"'
+                echo ""
+                
+                read -p "请输入落地鸡ID: " target_id </dev/tty
+                [[ -z "$target_id" ]] && { log_warning "操作已取消"; press_any_key; continue; }
+                
+                # 验证落地鸡是否存在
+                local target_exists=$(echo "$config" | jq -r ".target_nodes[] | select(.id == \"$target_id\") | .id")
+                if [[ -z "$target_exists" ]]; then
+                    log_error "落地鸡节点不存在"
+                    press_any_key
+                    continue
+                fi
+                
+                echo ""
+                log_info "正在添加关联..."
+                if link_relay_to_target "$relay_id" "$target_id"; then
+                    log_success "关联已添加"
+                else
+                    log_warning "关联可能已存在或添加失败"
+                fi
+                press_any_key
+                ;;
+            2)
+                clear
+                draw_title_line "删除节点关联" 50
+                echo ""
+                
+                echo -e "  ${WHITE}${BOLD}线路鸡节点${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                echo "$config" | jq -r '.relay_nodes[] | "  \(.id) - \(.name) (关联: \(.targets | length)个目标)"'
+                echo ""
+                
+                read -p "请输入线路鸡ID: " relay_id </dev/tty
+                [[ -z "$relay_id" ]] && { log_warning "操作已取消"; press_any_key; continue; }
+                
+                # 显示该线路鸡的关联目标
+                echo ""
+                echo -e "  ${WHITE}${BOLD}当前关联的落地鸡${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                local targets=$(get_relay_targets "$relay_id")
+                if [[ -z "$targets" ]]; then
+                    echo -e "  ${DIM}暂无关联${NC}"
+                    press_any_key
+                    continue
+                fi
+                
+                echo "$targets" | while read -r tid; do
+                    local tname=$(echo "$config" | jq -r ".target_nodes[] | select(.id == \"$tid\") | .name")
+                    echo "  $tid - $tname"
+                done
+                echo ""
+                
+                read -p "请输入要移除的落地鸡ID: " target_id </dev/tty
+                [[ -z "$target_id" ]] && { log_warning "操作已取消"; press_any_key; continue; }
+                
+                unlink_relay_from_target "$relay_id" "$target_id"
+                log_success "关联已删除"
+                press_any_key
+                ;;
+            3)
+                clear
+                draw_title_line "查看关联关系" 50
+                echo ""
+                
+                echo -e "  ${WHITE}${BOLD}节点关联关系${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                
+                local has_links=0
+                echo "$config" | jq -c '.relay_nodes[]' | while read -r relay; do
+                    local rid=$(echo "$relay" | jq -r '.id')
+                    local rname=$(echo "$relay" | jq -r '.name')
+                    local targets=$(echo "$relay" | jq -r '.targets[]' 2>/dev/null)
+                    
+                    if [[ -n "$targets" ]]; then
+                        echo ""
+                        echo -e "  ${CYAN}${BOLD}$rname ($rid)${NC}"
+                        echo "$targets" | while read -r tid; do
+                            local tname=$(echo "$config" | jq -r ".target_nodes[] | select(.id == \"$tid\") | .name")
+                            echo -e "    └─→ $tname ($tid)"
+                        done
+                        has_links=1
+                    fi
+                done
+                
+                if [[ $has_links -eq 0 ]]; then
+                    echo -e "  ${DIM}暂无配置的关联关系${NC}"
+                fi
+                
+                echo ""
+                press_any_key
+                ;;
+            0) break ;;
+            *) log_error "无效输入。"; press_any_key ;;
+        esac
+    done
+}
+
+# 查看当前配置
+show_gost_config() {
+    clear
+    draw_title_line "当前 Gost 配置" 50
+    echo ""
+    
+    local config=$(load_gost_config)
+    
+    echo -e "  ${WHITE}${BOLD}配置文件路径${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    echo -e "  ${GOST_CONFIG_FILE}"
+    echo ""
+    
+    echo -e "  ${WHITE}${BOLD}线路鸡节点${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    local relay_count=$(echo "$config" | jq '.relay_nodes | length')
+    if [[ "$relay_count" -eq 0 ]]; then
+        echo -e "  ${DIM}暂无线路鸡节点${NC}"
+    else
+        echo "$config" | jq -r '.relay_nodes[] | "  • \(.name) (\(.ip):\(.ssh_port)) - 关联 \(.targets | length) 个目标"'
+    fi
+    
+    echo ""
+    echo -e "  ${WHITE}${BOLD}落地鸡节点${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    local target_count=$(echo "$config" | jq '.target_nodes | length')
+    if [[ "$target_count" -eq 0 ]]; then
+        echo -e "  ${DIM}暂无落地鸡节点${NC}"
+    else
+        echo "$config" | jq -r '.target_nodes[] | "  • \(.name) (\(.ip):\(.ssh_port)) - 转发到 \(.forward_target)"'
+    fi
+    
+    echo ""
+    press_any_key
+}
+
+# 生成所有配置脚本
+generate_all_gost_scripts() {
+    clear
+    draw_title_line "生成配置脚本" 50
+    echo ""
+    
+    local config=$(load_gost_config)
+    local relay_count=$(echo "$config" | jq '.relay_nodes | length')
+    local target_count=$(echo "$config" | jq '.target_nodes | length')
+    
+    if [[ "$relay_count" -eq 0 && "$target_count" -eq 0 ]]; then
+        log_warning "暂无节点，无法生成配置"
+        press_any_key
+        return
+    fi
+    
+    mkdir -p "$GOST_DEPLOY_DIR"
+    
+    echo -e "  ${WHITE}${BOLD}生成配置脚本${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    echo ""
+    
+    # 生成落地鸡脚本
+    if [[ "$target_count" -gt 0 ]]; then
+        log_info "正在生成落地鸡脚本..."
+        echo ""
+        generate_all_target_scripts
+        echo ""
+    fi
+    
+    # 生成线路鸡脚本
+    if [[ "$relay_count" -gt 0 ]]; then
+        log_info "正在生成线路鸡脚本..."
+        echo ""
+        
+        echo "$config" | jq -c '.relay_nodes[]' | while read -r relay; do
+            local rid=$(echo "$relay" | jq -r '.id')
+            local rname=$(echo "$relay" | jq -r '.name')
+            
+            local script_file=$(generate_relay_gost_script "$rid")
+            
+            if [[ $? -eq 0 && -f "$script_file" ]]; then
+                echo -e "  ${GREEN}✓${NC} 已生成线路鸡脚本: ${script_file}"
+            else
+                echo -e "  ${RED}✗${NC} 生成失败: $rname"
+            fi
+        done
+    fi
+    
+    echo ""
+    log_success "配置脚本已生成到: $GOST_DEPLOY_DIR"
+    echo ""
+    echo -e "  ${WHITE}${BOLD}部署步骤（TLS 加密转发模式）${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    echo ""
+    echo -e "  ${CYAN}${BOLD}第一步：在所有落地鸡上部署${NC}"
+    echo -e "  1. 复制落地鸡脚本到对应服务器"
+    echo -e "     ${DIM}scp /opt/gost_deploy/gost_target_*.sh root@落地鸡IP:/root/${NC}"
+    echo ""
+    echo -e "  2. 在落地鸡上安装 gost"
+    echo -e "     ${DIM}wget https://github.com/ginuerzh/gost/releases/download/v2.11.5/gost-linux-amd64-2.11.5.gz${NC}"
+    echo -e "     ${DIM}gunzip gost-linux-amd64-2.11.5.gz${NC}"
+    echo -e "     ${DIM}mv gost-linux-amd64-2.11.5 /usr/local/bin/gost && chmod +x /usr/local/bin/gost${NC}"
+    echo ""
+    echo -e "  3. 运行落地鸡脚本（监听 TLS 端口）"
+    echo -e "     ${DIM}bash gost_target_*.sh${NC}"
+    echo -e "     ${DIM}或使用 nohup: nohup bash gost_target_*.sh > gost.log 2>&1 &${NC}"
+    echo ""
+    echo -e "  ${CYAN}${BOLD}第二步：在所有线路鸡上部署${NC}"
+    echo -e "  1. 复制线路鸡脚本到对应服务器"
+    echo -e "     ${DIM}scp /opt/gost_deploy/gost_relay_*.sh root@线路鸡IP:/root/${NC}"
+    echo ""
+    echo -e "  2. 在线路鸡上安装 gost（同上）"
+    echo ""
+    echo -e "  3. 运行线路鸡脚本（连接落地鸡）"
+    echo -e "     ${DIM}bash gost_relay_*.sh${NC}"
+    echo ""
+    echo -e "  ${YELLOW}${BOLD}注意事项：${NC}"
+    echo -e "  • 必须先启动落地鸡，再启动线路鸡"
+    echo -e "  • 确保落地鸡的 TLS 端口已开放"
+    echo -e "  • 线路鸡会监听 10001+ 端口提供服务"
+    echo -e "  • 所有流量通过 TLS 加密传输，无需 SSH"
+    echo ""
+    
+    press_any_key
+}
+
+# 清除所有配置
+clear_all_gost_config() {
+    clear
+    draw_title_line "清除所有配置" 50
+    echo ""
+    
+    echo -e "  ${RED}${BOLD}⚠ 警告：此操作将删除所有节点和配置！${NC}"
+    echo ""
+    
+    read -p "确认清除所有配置? 请输入 'yes' 确认: " confirm </dev/tty
+    
+    if [[ "$confirm" == "yes" ]]; then
+        # 备份配置
+        if [[ -f "$GOST_CONFIG_FILE" ]]; then
+            local backup_file="${GOST_CONFIG_FILE}.backup.$(date +%Y%m%d%H%M%S)"
+            cp "$GOST_CONFIG_FILE" "$backup_file"
+            log_info "配置已备份到: $backup_file"
+        fi
+        
+        # 重新初始化配置
+        cat > "$GOST_CONFIG_FILE" <<'EOF'
+{
+  "version": "1.0",
+  "relay_nodes": [],
+  "target_nodes": []
+}
+EOF
+        
+        # 清除生成的脚本
+        rm -rf "$GOST_DEPLOY_DIR"/*.sh 2>/dev/null
+        
+        log_success "所有配置已清除"
+    else
+        log_info "操作已取消"
+    fi
+    
+    press_any_key
+}
+
 # 主菜单和执行逻辑
 main() {
     while true; do
@@ -3703,12 +4274,13 @@ main() {
         draw_menu_item "5" "🐳" "Docker Compose 项目部署"
         draw_menu_item "6" "⚡" "VPS 优化"
         draw_menu_item "7" "🔧" "系统工具"
+        draw_menu_item "8" "🌐" "网络隧道工具"
         echo ""
         draw_separator 50
         draw_menu_item "0" "👋" "退出脚本"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-7]: )" main_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-8]: )" main_choice </dev/tty
 
         case $main_choice in
             1) show_status_menu ;;
@@ -3718,6 +4290,7 @@ main() {
             5) show_deployment_menu ;;
             6) show_optimization_menu ;;
             7) show_system_tools_menu ;;
+            8) show_gost_menu ;;
             0) 
                 echo ""
                 echo -e "  ${CYAN}感谢使用 fishtools，再见！${NC} 👋"
