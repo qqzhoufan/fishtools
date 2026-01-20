@@ -3695,20 +3695,30 @@ show_system_tools_menu() {
 show_gost_menu() {
     # 检查并加载 gost 管理脚本
     local gost_script_loaded=0
-    if source "${SCRIPT_PATH%/*}/scripts/gost_manager.sh" 2>/dev/null; then
-        gost_script_loaded=1
-    else
-        GOST_SCRIPT_DIR="$(dirname "$SCRIPT_PATH")/scripts"
-        if [[ -f "$GOST_SCRIPT_DIR/gost_manager.sh" ]]; then
-            source "$GOST_SCRIPT_DIR/gost_manager.sh" && gost_script_loaded=1
+    local script_paths=(
+        "${SCRIPT_PATH%/*}/scripts/gost_manager.sh"
+        "$(dirname "$SCRIPT_PATH")/scripts/gost_manager.sh"
+        "/opt/fishtools/scripts/gost_manager.sh"
+        "./scripts/gost_manager.sh"
+    )
+    
+    for script_path in "${script_paths[@]}"; do
+        if [[ -f "$script_path" ]] && source "$script_path" 2>/dev/null; then
+            gost_script_loaded=1
+            break
         fi
-    fi
+    done
     
     if [[ $gost_script_loaded -eq 0 ]]; then
         clear
         draw_title_line "Gost 隧道管理" 50
         echo ""
         log_error "无法加载 gost_manager.sh 脚本"
+        echo ""
+        echo -e "  ${DIM}尝试的路径：${NC}"
+        for script_path in "${script_paths[@]}"; do
+            echo -e "  ${DIM}- $script_path${NC}"
+        done
         press_any_key
         return 1
     fi
