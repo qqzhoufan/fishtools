@@ -3748,13 +3748,377 @@ show_gost_menu() {
         draw_title_line "Gost 隧道管理" 50
         echo ""
         
+        echo -e "  ${WHITE}${BOLD}本地配置模式（推荐）${NC}"
+        draw_menu_item "1" "🎯" "配置本机为落地鸡"
+        draw_menu_item "2" "🚀" "配置本机为线路鸡"
+        draw_menu_item "3" "📋" "查看本机配置"
+        draw_menu_item "4" "▶️" "启动/停止服务"
+        draw_menu_item "5" "🗑️" "清除本机配置"
+        echo ""
+        
+        echo -e "  ${WHITE}${BOLD}中心化管理模式（高级）${NC}"
+        draw_menu_item "6" "🔧" "节点管理与配置生成"
+        echo ""
+        
+        draw_separator 50
+        draw_menu_item "0" "🔙" "返回主菜单"
+        draw_footer 50
+        echo ""
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-6]: )" gost_choice </dev/tty
+        
+        case $gost_choice in
+            1) configure_local_target ;;
+            2) configure_local_relay ;;
+            3) show_local_gost_config ;;
+            4) manage_local_gost_service ;;
+            5) clear_local_gost_config ;;
+            6) show_centralized_menu ;;
+            0) break ;;
+            *) log_error "无效输入。"; press_any_key ;;
+        esac
+    done
+}
+
+# 配置本机为落地鸡
+configure_local_target() {
+    # 加载本地配置脚本
+    source_local_script || return 1
+    
+    clear
+    draw_title_line "配置本机为落地鸡" 50
+    echo ""
+    
+    # 检查并安装 gost
+    if ! check_gost_installed; then
+        log_info "gost 未安装，正在安装..."
+        if ! install_gost_binary; then
+            log_error "gost 安装失败"
+            press_any_key
+            return 1
+        fi
+    fi
+    
+    echo -e "  ${WHITE}${BOLD}落地鸡配置${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    echo ""
+    
+    read -p "TLS 监听端口 [8443]: " tls_port </dev/tty
+    tls_port=${tls_port:-8443}
+    
+    read -p "转发目标 [127.0.0.1:80]: " forward_target </dev/tty
+    forward_target=${forward_target:-127.0.0.1:80}
+    
+    echo ""
+    echo -e "  ${WHITE}${BOLD}配置摘要${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    echo -e "  模式: ${CYAN}落地鸡${NC}"
+    echo -e "  TLS 端口: ${CYAN}${tls_port}${NC}"
+    echo -e "  转发目标: ${CYAN}${forward_target}${NC}"
+    echo ""
+    
+    read -p "确认配置并启动服务? (y/n): " confirm </dev/tty
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+        log_info "操作已取消"
+        press_any_key
+        return 0
+    fi
+    
+    # 保存配置
+    configure_as_target "$tls_port" "$forward_target"
+    
+    # 启动服务
+    log_info "正在启动 gost 服务..."
+    if start_gost_service; then
+        echo ""
+        log_success "配置完成！服务已启动"
+        echo ""
+        echo -e "  ${WHITE}${BOLD}服务信息${NC}"
+        echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+        echo -e "  监听端口: ${CYAN}${tls_port}${NC} (TLS)"
+        echo -e "  转发到: ${CYAN}${forward_target}${NC}"
+        echo -e "  服务状态: ${GREEN}运行中${NC}"
+        echo ""
+        echo -e "  ${DIM}线路鸡可以连接到: ${NC}${CYAN}本机IP:${tls_port}${NC}"
+    else
+        log_error "服务启动失败"
+    fi
+    
+    press_any_key
+}
+
+# 配置本机为线路鸡
+configure_local_relay() {
+    # 加载本地配置脚本
+    source_local_script || return 1
+    
+    while true; do
+        clear
+        draw_title_line "配置本机为线路鸡" 50
+        echo ""
+        
+        # 检查并安装 gost
+        if ! check_gost_installed; then
+            log_info "gost 未安装，正在安装..."
+            if ! install_gost_binary; then
+                log_error "gost 安装失败"
+                press_any_key
+                return 1
+            fi
+        fi
+        
+        # 显示现有转发规则
+        echo -e "  ${WHITE}${BOLD}当前转发规则${NC}"
+        echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+        
+        local config=$(load_local_config)
+        local count=$(echo "$config" | jq '.relay.forwards | length')
+        
+        if [[ "$count" -eq 0 ]]; then
+            echo -e "  ${DIM}暂无转发规则${NC}"
+        else
+            echo "$config" | jq -r '.relay.forwards[] | "  [\(.listen_port)] → \(.name) (\(.target_ip):\(.target_port))"'
+        fi
+        
+        echo ""
+        draw_menu_item "1" "➕" "添加转发规则"
+        draw_menu_item "2" "🗑️" "删除转发规则"
+        draw_menu_item "3" "▶️" "应用配置并启动服务"
+        echo ""
+        draw_separator 50
+        draw_menu_item "0" "🔙" "返回上级菜单"
+        draw_footer 50
+        echo ""
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-3]: )" relay_choice </dev/tty
+        
+        case $relay_choice in
+            1)
+                clear
+                draw_title_line "添加转发规则" 50
+                echo ""
+                
+                read -p "落地鸡名称 (如: 美国落地): " name </dev/tty
+                [[ -z "$name" ]] && { log_warning "操作已取消"; press_any_key; continue; }
+                
+                read -p "落地鸡 IP: " target_ip </dev/tty
+                [[ -z "$target_ip" ]] && { log_warning "操作已取消"; press_any_key; continue; }
+                
+                read -p "落地鸡 TLS 端口 [8443]: " target_port </dev/tty
+                target_port=${target_port:-8443}
+                
+                local next_port=$(get_next_listen_port)
+                read -p "本地监听端口 [${next_port}]: " listen_port </dev/tty
+                listen_port=${listen_port:-$next_port}
+                
+                echo ""
+                log_info "正在添加转发规则..."
+                if add_relay_forward "$name" "$target_ip" "$target_port" "$listen_port"; then
+                    log_success "转发规则已添加"
+                    echo ""
+                    echo -e "  ${YELLOW}提示：请选择「应用配置并启动服务」使规则生效${NC}"
+                else
+                    log_error "添加失败（可能端口已被使用）"
+                fi
+                press_any_key
+                ;;
+            2)
+                if [[ "$count" -eq 0 ]]; then
+                    log_warning "暂无转发规则可删除"
+                    press_any_key
+                    continue
+                fi
+                
+                clear
+                draw_title_line "删除转发规则" 50
+                echo ""
+                
+                echo "$config" | jq -r '.relay.forwards[] | "  [\(.listen_port)] → \(.name)"'
+                echo ""
+                
+                read -p "请输入要删除的监听端口: " del_port </dev/tty
+                [[ -z "$del_port" ]] && { log_warning "操作已取消"; press_any_key; continue; }
+                
+                remove_relay_forward "$del_port"
+                log_success "转发规则已删除"
+                echo ""
+                echo -e "  ${YELLOW}提示：请选择「应用配置并启动服务」使更改生效${NC}"
+                press_any_key
+                ;;
+            3)
+                log_info "正在应用配置并启动服务..."
+                if start_gost_service; then
+                    echo ""
+                    log_success "服务已启动"
+                    echo ""
+                    echo -e "  ${WHITE}${BOLD}访问方式${NC}"
+                    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                    
+                    config=$(load_local_config)
+                    echo "$config" | jq -r '.relay.forwards[] | "  http://本机IP:\(.listen_port) → \(.name)"'
+                else
+                    log_error "服务启动失败"
+                fi
+                press_any_key
+                ;;
+            0) break ;;
+            *) log_error "无效输入。"; press_any_key ;;
+        esac
+    done
+}
+
+# 加载本地配置脚本
+source_local_script() {
+    local script_paths=(
+        "${SCRIPT_PATH%/*}/scripts/gost_local.sh"
+        "$(dirname "$SCRIPT_PATH")/scripts/gost_local.sh"
+        "/opt/fishtools/scripts/gost_local.sh"
+        "./scripts/gost_local.sh"
+    )
+    
+    for script_path in "${script_paths[@]}"; do
+        if [[ -f "$script_path" ]] && source "$script_path" 2>/dev/null; then
+            return 0
+        fi
+    done
+    
+    log_error "无法加载 gost_local.sh 脚本"
+    press_any_key
+    return 1
+}
+
+# 查看本机配置
+show_local_gost_config() {
+    source_local_script || return 1
+    
+    clear
+    draw_title_line "本机 Gost 配置" 50
+    echo ""
+    
+    echo -e "  ${WHITE}${BOLD}配置信息${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    get_local_config_summary
+    echo ""
+    
+    echo -e "  ${WHITE}${BOLD}服务状态${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    local status=$(get_gost_service_status)
+    if [[ "$status" == "running" ]]; then
+        echo -e "  ${GREEN}● 运行中${NC}"
+    else
+        echo -e "  ${RED}○ 已停止${NC}"
+    fi
+    
+    echo ""
+    press_any_key
+}
+
+# 管理本地服务
+manage_local_gost_service() {
+    source_local_script || return 1
+    
+    clear
+    draw_title_line "Gost 服务管理" 50
+    echo ""
+    
+    local status=$(get_gost_service_status)
+    
+    echo -e "  ${WHITE}${BOLD}当前状态${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    if [[ "$status" == "running" ]]; then
+        echo -e "  ${GREEN}● 运行中${NC}"
+    else
+        echo -e "  ${RED}○ 已停止${NC}"
+    fi
+    echo ""
+    
+    if [[ "$status" == "running" ]]; then
+        draw_menu_item "1" "⏹️" "停止服务"
+        draw_menu_item "2" "🔄" "重启服务"
+    else
+        draw_menu_item "1" "▶️" "启动服务"
+    fi
+    draw_menu_item "3" "📊" "查看日志"
+    echo ""
+    draw_separator 50
+    draw_menu_item "0" "🔙" "返回"
+    draw_footer 50
+    echo ""
+    read -p "$(echo -e ${CYAN}请输入选择${NC}): " service_choice </dev/tty
+    
+    case $service_choice in
+        1)
+            if [[ "$status" == "running" ]]; then
+                stop_gost_service
+                log_success "服务已停止"
+            else
+                start_gost_service
+                log_success "服务已启动"
+            fi
+            press_any_key
+            ;;
+        2)
+            if [[ "$status" == "running" ]]; then
+                start_gost_service
+                log_success "服务已重启"
+                press_any_key
+            fi
+            ;;
+        3)
+            clear
+            echo "=== Gost 服务日志 (最近 50 行) ==="
+            echo ""
+            sudo journalctl -u gost -n 50 --no-pager
+            echo ""
+            press_any_key
+            ;;
+        0) ;;
+        *) log_error "无效输入。"; press_any_key ;;
+    esac
+}
+
+# 清除本机配置
+clear_local_gost_config() {
+    source_local_script || return 1
+    
+    clear
+    draw_title_line "清除本机配置" 50
+    echo ""
+    
+    echo -e "  ${RED}${BOLD}⚠ 警告：此操作将删除所有本地配置！${NC}"
+    echo ""
+    
+    read -p "确认清除? 请输入 'yes' 确认: " confirm </dev/tty
+    
+    if [[ "$confirm" == "yes" ]]; then
+        # 停止服务
+        stop_gost_service 2>/dev/null
+        
+        # 删除配置文件
+        sudo rm -f "$LOCAL_GOST_CONFIG"
+        sudo rm -f "$GOST_SERVICE_FILE"
+        sudo systemctl daemon-reload
+        
+        log_success "本地配置已清除"
+    else
+        log_info "操作已取消"
+    fi
+    
+    press_any_key
+}
+
+# 中心化管理菜单（原功能）
+show_centralized_menu() {
+    while true; do
+        clear
+        draw_title_line "中心化管理模式" 50
+        echo ""
+        
         # 显示统计信息
         local relay_count=$(count_relay_nodes 2>/dev/null || echo "0")
         local target_count=$(count_target_nodes 2>/dev/null || echo "0")
-        echo -e "  ${WHITE}${BOLD}当前状态${NC}"
+        echo -e "  ${WHITE}${BOLD}节点统计${NC}"
         echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
-        echo -e "  线路鸡（中转节点）: ${CYAN}${relay_count}${NC} 个"
-        echo -e "  落地鸡（目标节点）: ${CYAN}${target_count}${NC} 个"
+        echo -e "  线路鸡: ${CYAN}${relay_count}${NC} 个"
+        echo -e "  落地鸡: ${CYAN}${target_count}${NC} 个"
         echo ""
         
         draw_menu_item "1" "🚀" "线路鸡（中转节点）管理"
