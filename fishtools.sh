@@ -3691,29 +3691,47 @@ show_system_tools_menu() {
 
 # ================== Gost 隧道管理菜单 ==================
 
-# 加载 gost 管理脚本
-source "${SCRIPT_PATH%/*}/scripts/gost_manager.sh" 2>/dev/null || {
-    GOST_SCRIPT_DIR="$(dirname "$SCRIPT_PATH")/scripts"
-    [[ -f "$GOST_SCRIPT_DIR/gost_manager.sh" ]] && source "$GOST_SCRIPT_DIR/gost_manager.sh"
-}
-
 # Gost 主菜单
 show_gost_menu() {
-    # 初始化 gost 管理器
-    if ! init_gost_manager 2>/dev/null; then
+    # 检查并加载 gost 管理脚本
+    local gost_script_loaded=0
+    if source "${SCRIPT_PATH%/*}/scripts/gost_manager.sh" 2>/dev/null; then
+        gost_script_loaded=1
+    else
+        GOST_SCRIPT_DIR="$(dirname "$SCRIPT_PATH")/scripts"
+        if [[ -f "$GOST_SCRIPT_DIR/gost_manager.sh" ]]; then
+            source "$GOST_SCRIPT_DIR/gost_manager.sh" && gost_script_loaded=1
+        fi
+    fi
+    
+    if [[ $gost_script_loaded -eq 0 ]]; then
+        clear
+        draw_title_line "Gost 隧道管理" 50
+        echo ""
+        log_error "无法加载 gost_manager.sh 脚本"
+        press_any_key
+        return 1
+    fi
+    
+    # 检查 jq 是否安装
+    if ! command -v jq &> /dev/null; then
         clear
         draw_title_line "Gost 隧道管理" 50
         echo ""
         log_error "缺少必要依赖 jq，正在尝试安装..."
         echo ""
         sudo apt-get update && sudo apt-get install -y jq
-        if ! check_jq; then
+        
+        if ! command -v jq &> /dev/null; then
             log_error "jq 安装失败，无法使用 Gost 管理功能"
             press_any_key
             return 1
         fi
-        init_gost_manager
+        log_success "jq 安装成功"
     fi
+    
+    # 初始化 gost 管理器
+    init_gost_manager
     
     while true; do
         clear
