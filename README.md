@@ -88,6 +88,7 @@ bash <(curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fisht
 │  6. ⚡  VPS 优化                                     │
 │  7. 🔧  系统工具                                     │
 │  8. 🌐  网络隧道工具 (Gost)                          │
+│  9. 🤖  OpenClaw AI 助手                              │
 │                                                      │
 └──────────────────────────────────────────────────────┘
 ```
@@ -231,6 +232,23 @@ bash <(curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fisht
 | 📦 系统包一键更新 | 一键更新所有已安装软件包 |
 | 📋 系统日志查看 | syslog/认证日志/dmesg/实时跟踪/关键词搜索 |
 | 📊 流量统计 (vnstat) | 月度/日/小时流量统计与实时监控 |
+
+---
+
+### 9. 🤖 OpenClaw AI 助手
+
+一键部署 [OpenClaw](https://github.com/openclaw/openclaw) —— 开源个人 AI 智能体。
+
+| 功能 | 说明 |
+|:---|:---|
+| 📦 npm 安装 | 自动检测/安装 Node.js 22+，全局安装 OpenClaw |
+| 🐳 Docker 部署 | 生成 docker-compose.yml，配置 API Key，一键启动 |
+| ▶️ 启动/停止 | 管理 OpenClaw 网关服务 |
+| 📊 状态/日志 | 查看运行状态和最近日志 |
+| 🗑️ 卸载 | 支持 Docker 和 npm 两种方式的完整卸载 |
+
+> [!TIP]
+> 推荐使用 Docker 方式部署，隔离性好且易于更新。npm 方式适合开发调试。
 
 ---
 
