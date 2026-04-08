@@ -1,0 +1,13 @@
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime
+*.log
+*.tmp
+gost_config.json
