@@ -1,5 +1,4 @@
 #!/bin/bash
-set -eo pipefail
 
 # =================================================================
 # fishtools (咸鱼工具箱) v1.3
@@ -12,7 +11,7 @@ set -eo pipefail
 # --- 全局配置 ---
 AUTHOR_GITHUB_USER="qqzhoufan"
 MAIN_REPO_NAME="fishtools"
-VERSION="v1.3"
+VERSION="v1.4"
 SCRIPT_PATH="$(realpath "$0" 2>/dev/null || echo "$0")"
 
 # --- 颜色和样式定义 ---
@@ -945,12 +944,13 @@ install_docker_menu() {
         echo -e "  ${WHITE}${BOLD}【镜像与清理】${NC}"
         draw_menu_item "9" "🖼️" "查看镜像列表"
         draw_menu_item "10" "🧹" "清理 Docker 空间"
+        draw_menu_item "11" "🚀" "配置镜像加速 (国内)"
         echo ""
         draw_separator 50
         draw_menu_item "0" "🔙" "返回上级菜单"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-10]: )" docker_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-11]: )" docker_choice </dev/tty
         
         case $docker_choice in
             1)
@@ -1060,8 +1060,7 @@ install_docker_menu() {
                 sudo docker rm $(docker ps -aq) 2>/dev/null || true
                 log_info "正在卸载 Docker..."
                 # 卸载所有可能的 Docker 相关包
-                sudo apt-get purge -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin docker.io docker-compose docker-doc podman-docker 2>/dev/null || true
-                sudo apt-get autoremove -y --purge
+                pkg_remove docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin docker.io docker-compose docker-doc podman-docker 2>/dev/null || true
                 log_info "正在清理 Docker 数据..."
                 sudo rm -rf /var/lib/docker
                 sudo rm -rf /var/lib/containerd
@@ -1223,6 +1222,75 @@ install_docker_menu() {
                 echo -e "  ${WHITE}${BOLD}清理后磁盘占用${NC}"
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
                 docker system df 2>/dev/null || true
+                press_any_key
+                ;;
+            11)
+                clear
+                draw_title_line "Docker 镜像加速配置" 50
+                echo ""
+                if ! command -v docker &>/dev/null; then
+                    log_error "Docker 未安装！"
+                    press_any_key
+                    continue
+                fi
+
+                # 显示当前配置
+                echo -e "  ${WHITE}${BOLD}当前镜像源配置${NC}"
+                echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                if [[ -f /etc/docker/daemon.json ]]; then
+                    local current_mirrors=$(cat /etc/docker/daemon.json 2>/dev/null | grep -o '"https://[^"]*"' | tr '\n' ' ')
+                    if [[ -n "$current_mirrors" ]]; then
+                        echo -e "  ${GREEN}已配置:${NC} $current_mirrors"
+                    else
+                        echo -e "  ${GRAY}未配置镜像加速${NC}"
+                    fi
+                else
+                    echo -e "  ${GRAY}未配置镜像加速${NC}"
+                fi
+                echo ""
+
+                echo -e "  ${WHITE}${BOLD}选择镜像加速源:${NC}"
+                echo -e "  ${CYAN}1.${NC} DaoCloud (docker.m.daocloud.io) ${DIM}(推荐)${NC}"
+                echo -e "  ${CYAN}2.${NC} 南京大学 (docker.nju.edu.cn)"
+                echo -e "  ${CYAN}3.${NC} Docker 官方中国镜像"
+                echo -e "  ${CYAN}4.${NC} 自定义镜像地址"
+                echo -e "  ${CYAN}5.${NC} 移除镜像加速配置"
+                echo ""
+                read -p "请选择 [1-5]: " mirror_choice </dev/tty
+
+                local mirror_url=""
+                case $mirror_choice in
+                    1) mirror_url="https://docker.m.daocloud.io" ;;
+                    2) mirror_url="https://docker.nju.edu.cn" ;;
+                    3) mirror_url="https://registry.docker-cn.com" ;;
+                    4)
+                        read -p "请输入镜像地址 (如 https://xxx.mirror.aliyuncs.com): " mirror_url </dev/tty
+                        ;;
+                    5)
+                        if [[ -f /etc/docker/daemon.json ]]; then
+                            sudo rm -f /etc/docker/daemon.json
+                            sudo systemctl restart docker 2>/dev/null || true
+                            log_success "镜像加速配置已移除"
+                        else
+                            log_info "未配置镜像加速，无需移除"
+                        fi
+                        press_any_key
+                        continue
+                        ;;
+                esac
+
+                if [[ -n "$mirror_url" ]]; then
+                    sudo mkdir -p /etc/docker
+                    sudo tee /etc/docker/daemon.json > /dev/null <<EOF
+{
+  "registry-mirrors": ["${mirror_url}"]
+}
+EOF
+                    sudo systemctl daemon-reload 2>/dev/null || true
+                    sudo systemctl restart docker 2>/dev/null || true
+                    log_success "镜像加速已配置: ${mirror_url}"
+                    echo -e "  ${CYAN}Docker 服务已重启生效${NC}"
+                fi
                 press_any_key
                 ;;
             0)
@@ -2068,9 +2136,11 @@ install_ufw_menu() {
                     continue
                 fi
                 read -p "请输入要开放的端口 (如 80 或 80/tcp): " port </dev/tty
-                if [[ -n "$port" ]]; then
-                    sudo ufw allow $port
+                if [[ -n "$port" && "$port" =~ ^[0-9]+(/[a-z]+)?$ ]]; then
+                    sudo ufw allow "$port"
                     log_success "已开放端口: $port"
+                elif [[ -n "$port" ]]; then
+                    log_error "无效端口格式！示例: 80 或 443/tcp"
                 fi
                 press_any_key
                 ;;
@@ -2084,9 +2154,11 @@ install_ufw_menu() {
                     continue
                 fi
                 read -p "请输入要关闭的端口 (如 80 或 80/tcp): " port </dev/tty
-                if [[ -n "$port" ]]; then
-                    sudo ufw deny $port
+                if [[ -n "$port" && "$port" =~ ^[0-9]+(/[a-z]+)?$ ]]; then
+                    sudo ufw deny "$port"
                     log_success "已关闭端口: $port"
+                elif [[ -n "$port" ]]; then
+                    log_error "无效端口格式！示例: 80 或 443/tcp"
                 fi
                 press_any_key
                 ;;
@@ -2978,7 +3050,7 @@ show_optimization_menu() {
                 draw_title_line "BBR/TCP 优化" 50
                 echo ""
                 log_info "正在下载并执行 BBR/TCP 优化脚本..."
-                if curl -sL http://sh.nekoneko.cloud/tools.sh -o tools.sh; then
+                if curl -sL https://sh.nekoneko.cloud/tools.sh -o tools.sh; then
                     bash tools.sh
                     rm -f tools.sh
                 else
@@ -3216,16 +3288,14 @@ deploy_preset_project() {
     fi
     
     log_info "启动项目中..."
-    cd "$project_dir" || return 1
-    sudo docker compose up -d
-    if [[ $? -eq 0 ]]; then 
+    if (cd "$project_dir" && sudo docker compose up -d); then
         echo ""
         log_success "项目 '$project_name' 已成功部署！"
         echo ""
         echo -e "  ${WHITE}${BOLD}访问地址${NC}"
         echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
         echo -e "  http://服务器IP:${custom_port}"
-    else 
+    else
         log_error "项目部署失败！"
         return 1
     fi
@@ -3482,12 +3552,15 @@ show_system_tools_menu() {
         draw_menu_item "4" "🔌" "修改 SSH 端口"
         draw_menu_item "5" "📅" "定时任务管理"
         draw_menu_item "6" "🔄" "系统重启/关机"
+        draw_menu_item "7" "📦" "系统包一键更新"
+        draw_menu_item "8" "📋" "系统日志查看"
+        draw_menu_item "9" "📊" "流量统计 (vnstat)"
         echo ""
         draw_separator 50
         draw_menu_item "0" "🔙" "返回主菜单"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-6]: )" tools_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-9]: )" tools_choice </dev/tty
         
         case $tools_choice in
             1)
@@ -3521,9 +3594,14 @@ show_system_tools_menu() {
                 
                 case $clean_opt in
                     1)
-                        log_info "清理 APT 缓存..."
-                        sudo apt-get clean
-                        log_success "APT 缓存已清理"
+                        log_info "清理包管理器缓存..."
+                        local pm=$(detect_pkg_manager)
+                        case "$pm" in
+                            apt) sudo apt-get clean ;;
+                            dnf) sudo dnf clean all ;;
+                            yum) sudo yum clean all ;;
+                        esac
+                        log_success "包缓存已清理"
                         ;;
                     2)
                         log_info "清理系统日志..."
@@ -3537,16 +3615,24 @@ show_system_tools_menu() {
                         ;;
                     4)
                         log_info "清理旧内核..."
-                        sudo apt-get autoremove --purge -y 2>/dev/null || true
+                        local pm=$(detect_pkg_manager)
+                        case "$pm" in
+                            apt) sudo apt-get autoremove --purge -y 2>/dev/null || true ;;
+                            dnf) sudo dnf autoremove -y 2>/dev/null || true ;;
+                            yum) sudo package-cleanup --oldkernels --count=1 2>/dev/null || true ;;
+                        esac
                         log_success "旧内核已清理"
                         ;;
                     5)
                         log_info "执行一键清理..."
-                        sudo apt-get clean
-                        sudo apt-get autoremove --purge -y 2>/dev/null || true
+                        local pm=$(detect_pkg_manager)
+                        case "$pm" in
+                            apt) sudo apt-get clean; sudo apt-get autoremove --purge -y 2>/dev/null || true ;;
+                            dnf) sudo dnf clean all; sudo dnf autoremove -y 2>/dev/null || true ;;
+                            yum) sudo yum clean all; sudo yum autoremove -y 2>/dev/null || true ;;
+                        esac
                         sudo journalctl --vacuum-time=7d 2>/dev/null || true
                         sudo rm -rf /tmp/* 2>/dev/null || true
-                        # 清理用户缓存
                         rm -rf ~/.cache/* 2>/dev/null || true
                         log_success "全部清理完成！"
                         ;;
@@ -3611,6 +3697,12 @@ show_system_tools_menu() {
                 read -p "请输入新主机名: " new_hostname </dev/tty
                 
                 if [[ -n "$new_hostname" ]]; then
+                    # 校验主机名格式 (RFC 1123)
+                    if [[ ! "$new_hostname" =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$ ]]; then
+                        log_error "无效主机名！仅允许字母、数字和连字符，不能以连字符开头或结尾"
+                        press_any_key
+                        continue
+                    fi
                     sudo hostnamectl set-hostname "$new_hostname" 2>/dev/null || \
                     echo "$new_hostname" | sudo tee /etc/hostname >/dev/null
                     # 更新 /etc/hosts
@@ -3651,6 +3743,17 @@ show_system_tools_menu() {
                     # 尝试在防火墙中开放新端口
                     if command -v ufw &>/dev/null; then
                         sudo ufw allow "$new_port"/tcp 2>/dev/null || true
+                    fi
+
+                    # 同步更新 fail2ban 配置
+                    if command -v fail2ban-client &>/dev/null && [[ -f /etc/fail2ban/jail.local ]]; then
+                        sudo sed -i "s/^port = .*/port = $new_port/" /etc/fail2ban/jail.local 2>/dev/null || true
+                        # 如果没有 port 行，则在 [sshd] 段后添加
+                        if ! grep -q "^port = " /etc/fail2ban/jail.local 2>/dev/null; then
+                            sudo sed -i "/^\[sshd\]/a port = $new_port" /etc/fail2ban/jail.local 2>/dev/null || true
+                        fi
+                        sudo systemctl restart fail2ban 2>/dev/null || true
+                        log_info "fail2ban 已同步更新到端口 $new_port"
                     fi
                     
                     log_success "SSH 端口已修改为: $new_port"
@@ -3748,6 +3851,132 @@ show_system_tools_menu() {
                             echo -e "  ${DIM}取消命令: sudo shutdown -c${NC}"
                         fi
                         ;;
+                esac
+                press_any_key
+                ;;
+            7)
+                clear
+                draw_title_line "系统包一键更新" 50
+                echo ""
+                local pm=$(detect_pkg_manager)
+                echo -e "  ${WHITE}${BOLD}包管理器: ${CYAN}${pm}${NC}"
+                echo ""
+                log_info "正在更新软件包索引..."
+                pkg_update
+                echo ""
+                log_info "正在升级所有已安装的软件包..."
+                case "$pm" in
+                    apt) sudo apt-get upgrade -y ;;
+                    dnf) sudo dnf upgrade -y ;;
+                    yum) sudo yum update -y ;;
+                    *) log_error "不支持的包管理器" ;;
+                esac
+                echo ""
+                log_success "系统包更新完成！"
+                press_any_key
+                ;;
+            8)
+                clear
+                draw_title_line "系统日志查看" 50
+                echo ""
+                echo -e "  ${WHITE}${BOLD}选择要查看的日志:${NC}"
+                echo -e "  ${CYAN}1.${NC} 系统日志 (最近 50 条)"
+                echo -e "  ${CYAN}2.${NC} 认证日志 (SSH 登录记录)"
+                echo -e "  ${CYAN}3.${NC} 内核日志 (dmesg)"
+                echo -e "  ${CYAN}4.${NC} 实时跟踪系统日志"
+                echo -e "  ${CYAN}5.${NC} 按关键词搜索日志"
+                echo ""
+                read -p "请选择 [1-5]: " log_choice </dev/tty
+                echo ""
+                case $log_choice in
+                    1)
+                        echo -e "  ${WHITE}${BOLD}系统日志 (最近 50 条)${NC}"
+                        echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                        sudo journalctl -n 50 --no-pager 2>/dev/null || \
+                            sudo tail -50 /var/log/syslog 2>/dev/null || \
+                            sudo tail -50 /var/log/messages 2>/dev/null || \
+                            log_error "无法读取系统日志"
+                        ;;
+                    2)
+                        echo -e "  ${WHITE}${BOLD}认证日志 (最近 30 条)${NC}"
+                        echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                        sudo journalctl -u sshd -n 30 --no-pager 2>/dev/null || \
+                            sudo tail -30 /var/log/auth.log 2>/dev/null || \
+                            sudo tail -30 /var/log/secure 2>/dev/null || \
+                            log_error "无法读取认证日志"
+                        ;;
+                    3)
+                        echo -e "  ${WHITE}${BOLD}内核日志${NC}"
+                        echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                        sudo dmesg --time-format iso 2>/dev/null | tail -30 || \
+                            sudo dmesg | tail -30
+                        ;;
+                    4)
+                        log_info "实时跟踪系统日志中... 按 Ctrl+C 退出"
+                        echo ""
+                        sudo journalctl -f --no-pager 2>/dev/null || \
+                            sudo tail -f /var/log/syslog 2>/dev/null || \
+                            sudo tail -f /var/log/messages 2>/dev/null || \
+                            log_error "无法跟踪系统日志"
+                        ;;
+                    5)
+                        read -p "请输入搜索关键词: " log_keyword </dev/tty
+                        if [[ -n "$log_keyword" ]]; then
+                            echo ""
+                            echo -e "  ${WHITE}${BOLD}搜索结果: '${log_keyword}'${NC}"
+                            echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+                            sudo journalctl --no-pager -n 50 2>/dev/null | grep -i "$log_keyword" || \
+                                echo "  未找到匹配的日志"
+                        fi
+                        ;;
+                esac
+                press_any_key
+                ;;
+            9)
+                clear
+                draw_title_line "流量统计 (vnstat)" 50
+                echo ""
+
+                if ! command -v vnstat &>/dev/null; then
+                    echo -e "  ${GRAY}○${NC} vnstat 未安装"
+                    echo ""
+                    echo -e "  ${WHITE}${BOLD}vnstat 是一个轻量级流量监控工具${NC}"
+                    echo -e "  ${DIM}安装后自动在后台统计网络流量，支持月度/日/小时报表${NC}"
+                    echo ""
+                    read -p "是否安装 vnstat? (y/n): " install_vnstat </dev/tty
+                    if [[ "$install_vnstat" == "y" || "$install_vnstat" == "Y" ]]; then
+                        pkg_update && pkg_install vnstat
+                        sudo systemctl enable vnstat 2>/dev/null || true
+                        sudo systemctl start vnstat 2>/dev/null || true
+                        log_success "vnstat 已安装并启动！"
+                        echo -e "  ${YELLOW}提示: 需要运行一段时间才会有统计数据${NC}"
+                    fi
+                    press_any_key
+                    continue
+                fi
+
+                echo -e "  ${GREEN}✓${NC} vnstat 已安装"
+                echo ""
+                echo -e "  ${WHITE}${BOLD}选择查看方式:${NC}"
+                echo -e "  ${CYAN}1.${NC} 总览 (默认)"
+                echo -e "  ${CYAN}2.${NC} 按月统计"
+                echo -e "  ${CYAN}3.${NC} 按天统计"
+                echo -e "  ${CYAN}4.${NC} 按小时统计"
+                echo -e "  ${CYAN}5.${NC} 实时流量"
+                echo ""
+                read -p "请选择 [1-5]: " vnstat_choice </dev/tty
+                echo ""
+                case $vnstat_choice in
+                    1) vnstat ;;
+                    2) vnstat -m ;;
+                    3) vnstat -d ;;
+                    4) vnstat -h ;;
+                    5)
+                        log_info "实时流量监控中... 按 Ctrl+C 退出"
+                        echo ""
+                        vnstat -l
+                        ;;
+                    *) vnstat ;;
                 esac
                 press_any_key
                 ;;
@@ -4769,6 +4998,14 @@ main() {
 
 # 脚本启动入口
 handle_args "$@"
+
+# root 权限检测
+if [[ $EUID -ne 0 ]] && ! sudo -n true 2>/dev/null; then
+    echo -e "${YELLOW}  ⚠ 警告: 当前非 root 用户且无免密 sudo，部分功能可能无法使用${NC}"
+    echo -e "${YELLOW}  ⚠ 建议以 root 用户运行: ${CYAN}sudo $0${NC}"
+    echo ""
+fi
+
 check_dependencies
 check_update
 main

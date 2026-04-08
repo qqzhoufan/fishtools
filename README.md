@@ -4,7 +4,7 @@
 
 ### 咸鱼工具箱
 
-[![Version](https://img.shields.io/badge/version-v1.3-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
+[![Version](https://img.shields.io/badge/version-v1.4-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
 [![Author](https://img.shields.io/badge/author-咸鱼银河-orange.svg?style=for-the-badge)](https://github.com/qqzhoufan)
 [![Language](https://img.shields.io/badge/language-Bash-brightgreen.svg?style=for-the-badge)](https://www.gnu.org/software/bash/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
@@ -222,12 +222,15 @@ bash <(curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fisht
 
 | 功能 | 说明 |
 |:---|:---|
-| 🧹 磁盘清理 | APT 缓存、系统日志、临时文件、旧内核一键清理 |
+| 🧹 磁盘清理 | APT/DNF/YUM 缓存、系统日志、临时文件、旧内核一键清理 |
 | 🌐 修改时区 | 快速切换常用时区 |
 | 🏷️ 修改主机名 | 一键修改服务器主机名 |
-| 🔌 修改 SSH 端口 | 安全加固，自动备份配置 |
+| 🔌 修改 SSH 端口 | 安全加固，自动同步 fail2ban 和防火墙 |
 | 📅 定时任务管理 | Cron 任务的添加/编辑/删除 |
 | 🔄 系统重启/关机 | 定时重启、立即关机等 |
+| 📦 系统包一键更新 | 一键更新所有已安装软件包 |
+| 📋 系统日志查看 | syslog/认证日志/dmesg/实时跟踪/关键词搜索 |
+| 📊 流量统计 (vnstat) | 月度/日/小时流量统计与实时监控 |
 
 ---
 
@@ -322,6 +325,25 @@ fishtools/
 ---
 
 ## 📝 更新日志
+
+### v1.4
+
+**安全与稳定性修复:**
+- 移除全局 `set -eo pipefail`，修复交互式菜单中子命令返回非 0 导致脚本退出的问题
+- 修复 BBR 优化脚本使用 HTTP 明文下载的安全隐患 (改为 HTTPS)
+- 修复 Docker Compose 部署后 `cd` 污染全局工作目录的问题
+- 增加 ufw 端口输入格式验证，防止命令注入
+- 增加主机名格式校验 (RFC 1123)
+- Docker 卸载改用通用 `pkg_remove()` 适配多发行版
+- 磁盘清理适配 apt/dnf/yum 多包管理器
+- 启动时增加 root 权限检测与提示
+
+**新功能:**
+- 新增 Docker Hub 镜像加速配置 (DaoCloud/南京大学/官方中国镜像/自定义)
+- 新增系统包一键更新 (apt upgrade / dnf upgrade / yum update)
+- 新增系统日志查看器 (syslog/auth/dmesg/实时跟踪/关键词搜索)
+- 新增 vnstat 流量统计 (月/日/时/实时监控)
+- SSH 端口修改后自动同步更新 fail2ban 配置
 
 ### v1.3
 
