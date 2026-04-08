@@ -5087,10 +5087,32 @@ show_openclaw_menu() {
 
                 # 检查 Docker
                 if ! command -v docker &>/dev/null || ! docker compose version &>/dev/null 2>&1; then
-                    log_error "Docker 或 Docker Compose 未安装！"
-                    echo -e "  ${DIM}请先通过主菜单 → 常用软件安装 → Docker 安装${NC}"
-                    press_any_key
-                    continue
+                    echo -e "  ${YELLOW}⚠ Docker 或 Docker Compose 未安装${NC}"
+                    echo ""
+                    read -p "是否自动安装 Docker? (y/n): " install_docker </dev/tty
+                    if [[ "$install_docker" == "y" || "$install_docker" == "Y" ]]; then
+                        log_info "正在安装 Docker..."
+                        # 国内优先腾讯云源，国外用官方源
+                        if curl -s --max-time 3 https://mirrors.cloud.tencent.com >/dev/null 2>&1; then
+                            curl -fsSL https://get.docker.com | bash -s docker --mirror https://mirrors.cloud.tencent.com/docker-ce
+                        else
+                            curl -fsSL https://get.docker.com | bash
+                        fi
+                        sudo systemctl enable docker 2>/dev/null || true
+                        sudo systemctl start docker 2>/dev/null || true
+
+                        if ! command -v docker &>/dev/null || ! docker compose version &>/dev/null 2>&1; then
+                            log_error "Docker 安装失败，请手动安装后重试"
+                            press_any_key
+                            continue
+                        fi
+                        log_success "Docker 安装成功"
+                        echo ""
+                    else
+                        log_info "操作已取消"
+                        press_any_key
+                        continue
+                    fi
                 fi
 
                 local oc_dir="/opt/openclaw"
