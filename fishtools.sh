@@ -2,7 +2,7 @@
 set -eo pipefail
 
 # =================================================================
-# fishtools (咸鱼工具箱) v1.0
+# fishtools (咸鱼工具箱) v1.3
 # Author: 咸鱼银河 (Xianyu Yinhe)
 # Github: https://github.com/qqzhoufan/fishtools
 #
@@ -12,8 +12,68 @@ set -eo pipefail
 # --- 全局配置 ---
 AUTHOR_GITHUB_USER="qqzhoufan"
 MAIN_REPO_NAME="fishtools"
-VERSION="v1.2"
+VERSION="v1.3"
 SCRIPT_PATH="$(realpath "$0" 2>/dev/null || echo "$0")"
+
+# --- 颜色和样式定义 ---
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
+WHITE='\033[1;37m'
+GRAY='\033[0;90m'
+BOLD='\033[1m'
+DIM='\033[2m'
+NC='\033[0m'
+
+# --- 通用包管理器工具 ---
+# 检测系统包管理器类型
+detect_pkg_manager() {
+    if command -v apt-get &>/dev/null; then
+        echo "apt"
+    elif command -v dnf &>/dev/null; then
+        echo "dnf"
+    elif command -v yum &>/dev/null; then
+        echo "yum"
+    else
+        echo "unknown"
+    fi
+}
+
+# 更新包索引
+pkg_update() {
+    local pm=$(detect_pkg_manager)
+    case "$pm" in
+        apt) sudo apt-get update -qq ;;
+        dnf) sudo dnf check-update -q 2>/dev/null; true ;;
+        yum) sudo yum check-update -q 2>/dev/null; true ;;
+        *) log_error "不支持的包管理器"; return 1 ;;
+    esac
+}
+
+# 安装软件包 (支持 apt/dnf/yum)
+pkg_install() {
+    local pm=$(detect_pkg_manager)
+    case "$pm" in
+        apt) sudo apt-get install -y "$@" ;;
+        dnf) sudo dnf install -y "$@" ;;
+        yum) sudo yum install -y "$@" ;;
+        *) log_error "不支持的包管理器，请手动安装: $*"; return 1 ;;
+    esac
+}
+
+# 卸载软件包
+pkg_remove() {
+    local pm=$(detect_pkg_manager)
+    case "$pm" in
+        apt) sudo apt-get purge -y "$@" && sudo apt-get autoremove -y --purge ;;
+        dnf) sudo dnf remove -y "$@" ;;
+        yum) sudo yum remove -y "$@" ;;
+        *) log_error "不支持的包管理器，请手动卸载: $*"; return 1 ;;
+    esac
+}
 
 # --- 依赖检查 ---
 check_dependencies() {
@@ -168,16 +228,29 @@ handle_args() {
             echo ""
             echo -e "${CYAN}  ℹ 正在安装 fish 命令...${NC}"
             local install_path="/usr/local/bin/fish"
-            
+            local install_cmd="fish"
+
+            # 检测是否已安装 fish shell，避免冲突
+            local existing_fish=$(which fish 2>/dev/null)
+            if [[ -n "$existing_fish" ]]; then
+                # 检查是否是本脚本自身
+                local fish_type=$(file -b "$existing_fish" 2>/dev/null || echo "")
+                if [[ "$fish_type" != *"shell script"* && "$fish_type" != *"Bourne"* ]]; then
+                    echo -e "${YELLOW}  ⚠ 检测到系统已安装 fish shell，将使用 fishtool 作为命令名${NC}"
+                    install_path="/usr/local/bin/fishtool"
+                    install_cmd="fishtool"
+                fi
+            fi
+
             # 复制脚本到目标位置
             if sudo cp "$SCRIPT_PATH" "$install_path" && sudo chmod +x "$install_path"; then
                 echo -e "${GREEN}  ✓ 安装成功！${NC}"
                 echo ""
                 echo -e "  现在可以使用以下命令:"
-                echo -e "    ${CYAN}fish${NC}          # 启动工具箱"
-                echo -e "    ${CYAN}fish --help${NC}   # 查看帮助"
-                echo -e "    ${CYAN}fish --info${NC}   # 查看系统信息"
-                echo -e "    ${CYAN}fish --bbr${NC}    # 一键开启 BBR"
+                echo -e "    ${CYAN}${install_cmd}${NC}          # 启动工具箱"
+                echo -e "    ${CYAN}${install_cmd} --help${NC}   # 查看帮助"
+                echo -e "    ${CYAN}${install_cmd} --info${NC}   # 查看系统信息"
+                echo -e "    ${CYAN}${install_cmd} --bbr${NC}    # 一键开启 BBR"
                 echo ""
             else
                 echo -e "${RED}  ✗ 安装失败，请使用 sudo 运行${NC}"
@@ -212,19 +285,6 @@ handle_args() {
             ;;
     esac
 }
-
-# --- 颜色和样式定义 ---
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-MAGENTA='\033[0;35m'
-WHITE='\033[1;37m'
-GRAY='\033[0;90m'
-BOLD='\033[1m'
-DIM='\033[2m'
-NC='\033[0m'
 
 # --- Unicode 边框字符 ---
 # 使用简单的 ASCII 字符以确保兼容性
@@ -1218,7 +1278,7 @@ install_nginx_menu() {
                 draw_title_line "安装 Nginx" 50
                 echo ""
                 log_info "正在安装 Nginx..."
-                sudo apt-get update && sudo apt-get install -y nginx
+                pkg_update && pkg_install nginx
                 log_success "Nginx 安装完成！"
                 nginx -v
                 echo ""
@@ -1281,8 +1341,8 @@ EOF
                 # 检测 Certbot
                 if ! command -v certbot &>/dev/null; then
                     log_info "Certbot 未安装，正在自动安装..."
-                    sudo apt-get update
-                    sudo apt-get install -y certbot python3-certbot-nginx
+                    pkg_update
+                    pkg_install certbot python3-certbot-nginx
                     log_success "Certbot 安装完成！"
                     echo ""
                 fi
@@ -1358,8 +1418,7 @@ EOF
                 log_info "正在停止 Nginx..."
                 sudo systemctl stop nginx 2>/dev/null || true
                 log_info "正在卸载 Nginx..."
-                sudo apt-get purge -y nginx nginx-common nginx-full nginx-core 2>/dev/null || true
-                sudo apt-get autoremove -y --purge
+                pkg_remove nginx nginx-common nginx-full nginx-core 2>/dev/null || true
                 log_info "正在清理配置..."
                 sudo rm -rf /etc/nginx
                 sudo rm -rf /var/log/nginx
@@ -1504,8 +1563,7 @@ install_caddy_menu() {
                 log_info "正在停止 Caddy..."
                 sudo systemctl stop caddy 2>/dev/null || true
                 log_info "正在卸载 Caddy..."
-                sudo apt-get purge -y caddy 2>/dev/null || true
-                sudo apt-get autoremove -y --purge
+                pkg_remove caddy 2>/dev/null || true
                 log_info "正在清理配置..."
                 sudo rm -rf /etc/caddy
                 sudo rm -rf /var/lib/caddy
@@ -1596,15 +1654,32 @@ install_fail2ban_menu() {
                 draw_title_line "安装 fail2ban" 50
                 echo ""
                 log_info "正在安装 fail2ban..."
-                sudo apt-get update && sudo apt-get install -y fail2ban
-                
-                # 启用 SSH 保护
+                pkg_update && pkg_install fail2ban
+
+                # 自动检测日志后端并生成对应配置
+                local f2b_backend=""
+                local f2b_logpath=""
+                if [[ -f /var/log/auth.log ]]; then
+                    # Debian/Ubuntu 传统 rsyslog 模式
+                    f2b_backend="auto"
+                    f2b_logpath="logpath = /var/log/auth.log"
+                elif [[ -f /var/log/secure ]]; then
+                    # CentOS/RHEL/Fedora
+                    f2b_backend="auto"
+                    f2b_logpath="logpath = /var/log/secure"
+                else
+                    # Debian 12+/现代 systemd 系统 - 使用 journald
+                    f2b_backend="systemd"
+                    f2b_logpath=""
+                fi
+
                 sudo tee /etc/fail2ban/jail.local > /dev/null <<EOF
 [sshd]
 enabled = true
 port = ssh
 filter = sshd
-logpath = /var/log/auth.log
+backend = ${f2b_backend}
+${f2b_logpath}
 maxretry = 5
 bantime = 3600
 findtime = 600
@@ -1616,6 +1691,7 @@ EOF
                 echo -e "  ${CYAN}配置说明:${NC}"
                 echo -e "    • 5 次失败后封禁 IP"
                 echo -e "    • 封禁时长: 1 小时"
+                echo -e "    • 日志后端: ${f2b_backend}"
                 echo -e "    • 配置文件: /etc/fail2ban/jail.local"
                 press_any_key
                 ;;
@@ -1669,8 +1745,7 @@ EOF
                 read -p "确认卸载 fail2ban? (y/n): " confirm </dev/tty
                 if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
                     sudo systemctl stop fail2ban 2>/dev/null || true
-                    sudo apt-get purge -y fail2ban
-                    sudo apt-get autoremove -y --purge
+                    pkg_remove fail2ban
                     log_success "fail2ban 已卸载！"
                 fi
                 press_any_key
@@ -1725,15 +1800,15 @@ install_monitor_menu() {
             1)
                 clear
                 log_info "正在安装 htop..."
-                sudo apt-get update && sudo apt-get install -y htop
+                pkg_update && pkg_install htop
                 log_success "htop 安装完成！运行命令: htop"
                 press_any_key
                 ;;
             2)
                 clear
                 log_info "正在安装 btop..."
-                sudo apt-get update && sudo apt-get install -y btop 2>/dev/null || {
-                    log_warning "apt 源中无 btop，尝试 snap 安装..."
+                pkg_update && pkg_install btop 2>/dev/null || {
+                    log_warning "包管理器中无 btop，尝试 snap 安装..."
                     sudo snap install btop 2>/dev/null || {
                         log_error "btop 安装失败，您的系统可能不支持"
                     }
@@ -1767,9 +1842,9 @@ install_monitor_menu() {
                 echo ""
                 read -p "请选择: " uninstall_choice </dev/tty
                 case $uninstall_choice in
-                    1) sudo apt-get purge -y htop && log_success "htop 已卸载" ;;
-                    2) sudo apt-get purge -y btop 2>/dev/null; sudo snap remove btop 2>/dev/null; log_success "btop 已卸载" ;;
-                    3) sudo apt-get purge -y htop btop 2>/dev/null; sudo snap remove btop 2>/dev/null; log_success "已全部卸载" ;;
+                    1) pkg_remove htop && log_success "htop 已卸载" ;;
+                    2) pkg_remove btop 2>/dev/null; sudo snap remove btop 2>/dev/null; log_success "btop 已卸载" ;;
+                    3) pkg_remove htop btop 2>/dev/null; sudo snap remove btop 2>/dev/null; log_success "已全部卸载" ;;
                 esac
                 press_any_key
                 ;;
@@ -1819,7 +1894,7 @@ install_tmux_menu() {
             1)
                 clear
                 log_info "正在安装 tmux..."
-                sudo apt-get update && sudo apt-get install -y tmux
+                pkg_update && pkg_install tmux
                 log_success "tmux 安装完成！"
                 press_any_key
                 ;;
@@ -1892,8 +1967,7 @@ install_tmux_menu() {
                 fi
                 read -p "确认卸载 tmux? (y/n): " confirm </dev/tty
                 if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
-                    sudo apt-get purge -y tmux
-                    sudo apt-get autoremove -y --purge
+                    pkg_remove tmux
                     log_success "tmux 已卸载！"
                 fi
                 press_any_key
@@ -1949,7 +2023,7 @@ install_ufw_menu() {
             1)
                 clear
                 log_info "正在安装 ufw..."
-                sudo apt-get update && sudo apt-get install -y ufw
+                pkg_update && pkg_install ufw
                 log_success "ufw 安装完成！"
                 echo ""
                 echo -e "  ${YELLOW}提示: 启用前请先开放 SSH 端口 (22)${NC}"
@@ -2052,8 +2126,7 @@ install_ufw_menu() {
                 read -p "确认卸载 ufw? (y/n): " confirm </dev/tty
                 if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
                     sudo ufw --force disable 2>/dev/null || true
-                    sudo apt-get purge -y ufw
-                    sudo apt-get autoremove -y --purge
+                    pkg_remove ufw
                     log_success "ufw 已卸载！"
                 fi
                 press_any_key
@@ -3730,7 +3803,7 @@ show_gost_menu() {
         echo ""
         log_error "缺少必要依赖 jq，正在尝试安装..."
         echo ""
-        sudo apt-get update && sudo apt-get install -y jq
+        pkg_update && pkg_install jq
         
         if ! command -v jq &> /dev/null; then
             log_error "jq 安装失败，无法使用 Gost 管理功能"
@@ -4164,7 +4237,7 @@ show_relay_nodes_menu() {
         if [[ "$relay_count" -eq 0 ]]; then
             echo -e "  ${DIM}暂无线路鸡节点${NC}"
         else
-            echo "$config" | jq -r '.relay_nodes[] | "  [\(.id)] \(.name) - \(.ip):\(.ssh_port) (关联: \(.targets | length)个目标)"'
+            echo "$config" | jq -r '.relay_nodes[] | "  [\(.id)] \(.name) - \(.ip) (关联: \(.targets | length)个目标)"'
         fi
         
         echo ""
@@ -4253,7 +4326,7 @@ show_target_nodes_menu() {
         if [[ "$target_count" -eq 0 ]]; then
             echo -e "  ${DIM}暂无落地鸡节点${NC}"
         else
-            echo "$config" | jq -r '.target_nodes[] | "  [\(.id)] \(.name) - \(.ip):\(.ssh_port)"'
+            echo "$config" | jq -r '.target_nodes[] | "  [\(.id)] \(.name) - \(.ip):\(.tls_port)"'
         fi
         
         echo ""
@@ -4509,7 +4582,7 @@ show_gost_config() {
     if [[ "$relay_count" -eq 0 ]]; then
         echo -e "  ${DIM}暂无线路鸡节点${NC}"
     else
-        echo "$config" | jq -r '.relay_nodes[] | "  • \(.name) (\(.ip):\(.ssh_port)) - 关联 \(.targets | length) 个目标"'
+        echo "$config" | jq -r '.relay_nodes[] | "  • \(.name) (\(.ip)) - 关联 \(.targets | length) 个目标"'
     fi
     
     echo ""
@@ -4519,7 +4592,7 @@ show_gost_config() {
     if [[ "$target_count" -eq 0 ]]; then
         echo -e "  ${DIM}暂无落地鸡节点${NC}"
     else
-        echo "$config" | jq -r '.target_nodes[] | "  • \(.name) (\(.ip):\(.ssh_port)) - 转发到 \(.forward_target)"'
+        echo "$config" | jq -r '.target_nodes[] | "  • \(.name) (\(.ip):\(.tls_port)) - 转发到 \(.forward_target)"'
     fi
     
     echo ""

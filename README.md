@@ -4,7 +4,7 @@
 
 ### 咸鱼工具箱
 
-[![Version](https://img.shields.io/badge/version-v1.2-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
+[![Version](https://img.shields.io/badge/version-v1.3-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
 [![Author](https://img.shields.io/badge/author-咸鱼银河-orange.svg?style=for-the-badge)](https://github.com/qqzhoufan)
 [![Language](https://img.shields.io/badge/language-Bash-brightgreen.svg?style=for-the-badge)](https://www.gnu.org/software/bash/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
@@ -45,6 +45,16 @@
 
 ## 🚀 快速开始
 
+### 支持的系统
+
+| 发行版 | 版本 |
+|:---|:---|
+| Debian | 10 / 11 / 12+ |
+| Ubuntu | 20.04 / 22.04 / 24.04+ |
+| CentOS | 7 / 8 / Stream 9 |
+| Fedora | 38+ |
+| RHEL | 8 / 9 |
+
 ### 方式一：一键安装 (推荐)
 
 ```bash
@@ -77,6 +87,7 @@ bash <(curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fisht
 │  5. 🐳  Docker Compose 项目部署                      │
 │  6. ⚡  VPS 优化                                     │
 │  7. 🔧  系统工具                                     │
+│  8. 🌐  网络隧道工具 (Gost)                          │
 │                                                      │
 └──────────────────────────────────────────────────────┘
 ```
@@ -174,6 +185,19 @@ bash <(curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fisht
 | 🎵 Navidrome | 自托管音乐流媒体服务器 |
 | 📥 qBittorrent | 功能强大的 BT 下载客户端 |
 | 📺 MoonTV | 观影资源聚合平台 |
+| 🎬 Jellyfin | 开源媒体服务器 |
+| ☁️ Nextcloud | 私有云盘 |
+| 📂 Alist | 网盘聚合工具 |
+| 🔑 Vaultwarden | 自托管密码管理器 |
+| 📊 Uptime Kuma | 轻量级服务监控面板 |
+| 🐳 Portainer | Docker 可视化管理 |
+| 📷 PhotoPrism | AI 照片管理 |
+| 🛡️ AdGuard Home | DNS 广告过滤 |
+| 📚 Calibre-Web | 电子书管理 |
+| 📁 FileBrowser | Web 文件管理器 |
+| 🔄 Syncthing | 文件同步工具 |
+| 📥 Transmission | 轻量 BT 下载客户端 |
+| 🐙 Gitea | 自托管 Git 服务 |
 
 > [!TIP]
 > 所有预设项目都支持一键部署，自动下载配置文件并启动容器！
@@ -209,13 +233,13 @@ bash <(curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fisht
 
 ### 🚀 命令行快捷方式
 
-v1.2 新增命令行参数支持，无需进入菜单即可快速执行常用操作：
+安装后可通过命令行参数快速执行常用操作：
 
 ```bash
 # 首次使用需安装 fish 命令
 ./fishtools.sh --install
 
-# 安装后即可使用 fish 命令
+# 安装后即可使用 fish 命令（若系统已安装 fish shell，命令名自动变为 fishtool）
 fish --help      # 显示帮助信息
 fish --version   # 显示版本
 fish --update    # 检查并更新脚本
@@ -226,7 +250,20 @@ fish --test      # 进入性能测试菜单
 ```
 
 > [!TIP]
-> 如果系统已安装 fish shell，会自动使用 `fishtool` 作为命令名。
+> 如果系统已安装 fish shell，安装时会自动检测并使用 `fishtool` 作为命令名，避免冲突。
+
+---
+
+### 8. 🌐 网络隧道工具 (Gost)
+
+基于 [Gost](https://github.com/ginuerzh/gost) 的 TLS 加密隧道转发管理。
+
+| 功能 | 说明 |
+|:---|:---|
+| 🖥️ 本地配置 | 一键将本机配置为落地鸡或线路鸡 |
+| 📡 中心化管理 | 集中管理多节点，批量生成配置脚本 |
+| 🔗 节点关联 | 线路鸡与落地鸡的灵活关联/取消 |
+| ⚙️ 自动部署 | 生成一键部署脚本，systemd 服务托管 |
 
 ---
 
@@ -281,6 +318,35 @@ fishtools/
 | [WARP 管理](https://gitlab.com/fscarmen/warp) | fscarmen |
 
 以及 [**NodeSeek 论坛**](https://www.nodeseek.com/) 和其他技术社区的网友们！
+
+---
+
+## 📝 更新日志
+
+### v1.3
+
+- **修复** fail2ban 在 Debian 12+/Ubuntu 22.04+ (journald) 系统上安装后无法工作的问题
+- **修复** fail2ban 现已支持 CentOS/RHEL 系统 (`/var/log/secure`)
+- **修复** Gost 隧道管理中多端口转发只生成单一端口的 bug
+- **修复** Gost 本地配置 relay 模式无法正确生成多参数命令的 bug
+- **修复** Navidrome 预设 Docker Compose 文件 YAML 语法错误
+- **修复** qBittorrent 预设中残留的私人路径配置
+- **修复** Gost 节点列表中引用不存在字段 (ssh_port) 导致显示 null
+- **优化** 新增通用包管理器适配 (apt/dnf/yum)，软件安装不再仅限 Debian/Ubuntu
+- **优化** `--install` 自动检测 fish shell 避免命令冲突
+- **优化** 颜色变量定义前移，提升代码结构健壮性
+- **优化** 清理 Docker Compose 预设中已废弃的 `version` 字段
+- **优化** 完善 README，补全 18 个预设项目列表和 Gost 隧道功能说明
+
+### v1.2
+
+- 新增命令行参数支持
+- 新增 Gost 隧道管理 (本地配置 + 中心化管理)
+- 新增 Docker Compose 预设项目部署
+
+### v1.0
+
+- 初始版本发布
 
 ---
 

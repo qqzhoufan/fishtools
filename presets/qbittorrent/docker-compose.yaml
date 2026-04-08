@@ -1,4 +1,3 @@
-version: "2"
 services:
   qbittorrent:
     image: linuxserver/qbittorrent
@@ -12,7 +11,6 @@ services:
     volumes:
       - ./config:/config # 绝对路径请修改为自己的config文件夹
       - ./downloads:/downloads # 绝对路径请修改为自己的downloads文件夹
-      - /root/qb/jp:/downloads1
     ports:
       # 要使用的映射下载端口与内部下载端口，可保持默认，安装完成后在管理页面仍然可以改成其他端口。
       - 6881:6881

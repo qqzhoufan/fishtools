@@ -290,43 +290,45 @@ EOF
     
     # 为每个目标生成转发命令
     local port_counter=10001
-    echo "$targets" | while read -r target_id; do
+    while read -r target_id; do
+        [[ -z "$target_id" ]] && continue
         local target_node=$(echo "$config" | jq -r ".target_nodes[] | select(.id == \"$target_id\")")
-        
+
         if [[ -n "$target_node" && "$target_node" != "null" ]]; then
             local target_name=$(echo "$target_node" | jq -r '.name')
             local target_ip=$(echo "$target_node" | jq -r '.ip')
             local target_tls_port=$(echo "$target_node" | jq -r '.tls_port')
-            
+
             echo "echo '  [$port_counter] → $target_name ($target_ip:$target_tls_port)'" >> "$script_file"
-            
+
             port_counter=$((port_counter + 1))
         fi
-    done
-    
+    done <<< "$targets"
+
     echo "" >> "$script_file"
     echo "echo ''" >> "$script_file"
     echo "echo '启动 gost 转发服务...'" >> "$script_file"
     echo "echo ''" >> "$script_file"
     echo "" >> "$script_file"
-    
+
     # 重新生成转发命令（实际执行）
     port_counter=10001
-    echo "$targets" | while read -r target_id; do
+    while read -r target_id; do
+        [[ -z "$target_id" ]] && continue
         local target_node=$(echo "$config" | jq -r ".target_nodes[] | select(.id == \"$target_id\")")
-        
+
         if [[ -n "$target_node" && "$target_node" != "null" ]]; then
             local target_name=$(echo "$target_node" | jq -r '.name')
             local target_ip=$(echo "$target_node" | jq -r '.ip')
             local target_tls_port=$(echo "$target_node" | jq -r '.tls_port')
-            
+
             echo "# 转发到: $target_name ($target_id)" >> "$script_file"
             echo "gost -L=:$port_counter -F=relay+tls://$target_ip:$target_tls_port &" >> "$script_file"
             echo "" >> "$script_file"
-            
+
             port_counter=$((port_counter + 1))
         fi
-    done
+    done <<< "$targets"
     
     # 添加等待命令
     echo "wait" >> "$script_file"

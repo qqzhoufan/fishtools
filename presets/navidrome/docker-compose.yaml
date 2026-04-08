@@ -1,4 +1,3 @@
-version: "3"
 services:
   navidrome:
     image: deluan/navidrome:latest
@@ -10,5 +9,5 @@ services:
       ND_BASEURL: ""
       ND_API_ENABLED: "true"  # 启用 API
     volumes:
-      - /opt/navidrome/data:/data"  #音乐文件左侧为安装位置
-      - /opt/navidrome/music:/music:ro" #音乐文件左侧为安装位置
+      - /opt/navidrome/data:/data  #音乐文件左侧为安装位置
+      - /opt/navidrome/music:/music:ro #音乐文件左侧为安装位置

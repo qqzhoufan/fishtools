@@ -56,20 +56,23 @@ install_gost_binary() {
     fi
     
     echo "正在安装 gost..."
+    local orig_dir=$(pwd)
     local temp_dir=$(mktemp -d)
     cd "$temp_dir" || return 1
-    
+
     wget -q https://github.com/ginuerzh/gost/releases/download/v2.11.5/gost-linux-amd64-2.11.5.gz
     if [[ $? -ne 0 ]]; then
         echo "下载失败"
+        cd "$orig_dir"
         rm -rf "$temp_dir"
         return 1
     fi
-    
+
     gunzip gost-linux-amd64-2.11.5.gz
     sudo mv gost-linux-amd64-2.11.5 /usr/local/bin/gost
     sudo chmod +x /usr/local/bin/gost
-    
+
+    cd "$orig_dir"
     rm -rf "$temp_dir"
     
     if check_gost_installed; then
@@ -167,14 +170,15 @@ generate_gost_command() {
         # 线路鸡模式 - 生成多个 -L 和 -F 参数
         local cmd="/usr/local/bin/gost"
         local forwards=$(echo "$config" | jq -c '.relay.forwards[]')
-        
-        echo "$forwards" | while read -r forward; do
+
+        while read -r forward; do
+            [[ -z "$forward" ]] && continue
             local listen_port=$(echo "$forward" | jq -r '.listen_port')
             local target_ip=$(echo "$forward" | jq -r '.target_ip')
             local target_port=$(echo "$forward" | jq -r '.target_port')
             cmd="$cmd -L=:${listen_port} -F=relay+tls://${target_ip}:${target_port}"
-        done
-        
+        done <<< "$forwards"
+
         echo "$cmd"
     else
         echo ""
