@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =================================================================
-# fishtools (咸鱼工具箱) v1.3
+# fishtools (咸鱼工具箱) v1.4
 # Author: 咸鱼银河 (Xianyu Yinhe)
 # Github: https://github.com/qqzhoufan/fishtools
 #
@@ -27,18 +27,41 @@ BOLD='\033[1m'
 DIM='\033[2m'
 NC='\033[0m'
 
+# --- 临时文件清理 ---
+_fishtools_cleanup() {
+    rm -f reinstall.sh OsMutation.sh ecs.sh nt_install.sh \
+          backtrace.sh superspeed.sh tools.sh swap.sh menu.sh \
+          fish_ipcheck.sh 2>/dev/null
+}
+trap _fishtools_cleanup EXIT
+
 # --- 通用包管理器工具 ---
-# 检测系统包管理器类型
+# 检测系统包管理器类型（带缓存）
+CACHED_PKG_MANAGER=""
 detect_pkg_manager() {
-    if command -v apt-get &>/dev/null; then
-        echo "apt"
-    elif command -v dnf &>/dev/null; then
-        echo "dnf"
-    elif command -v yum &>/dev/null; then
-        echo "yum"
-    else
-        echo "unknown"
+    if [[ -n "$CACHED_PKG_MANAGER" ]]; then
+        echo "$CACHED_PKG_MANAGER"
+        return
     fi
+    if command -v apt-get &>/dev/null; then
+        CACHED_PKG_MANAGER="apt"
+    elif command -v dnf &>/dev/null; then
+        CACHED_PKG_MANAGER="dnf"
+    elif command -v yum &>/dev/null; then
+        CACHED_PKG_MANAGER="yum"
+    else
+        CACHED_PKG_MANAGER="unknown"
+    fi
+    echo "$CACHED_PKG_MANAGER"
+}
+
+# 获取公网 IPv4 地址
+get_public_ipv4() {
+    local ip=""
+    ip=$(curl -s4 --connect-timeout 3 ip.sb 2>/dev/null) \
+        || ip=$(curl -s4 --connect-timeout 3 ifconfig.me 2>/dev/null) \
+        || ip=""
+    echo "$ip"
 }
 
 # 更新包索引
@@ -315,10 +338,8 @@ log_error() {
 draw_line() {
     local width=${1:-50}
     local color=${2:-$CYAN}
-    local line=""
-    for ((i=0; i<width; i++)); do
-        line+="$LINE_H"
-    done
+    local line
+    line=$(printf '%*s' "$width" '' | tr ' ' "$LINE_H")
     echo -e "${color}${line}${NC}"
 }
 
@@ -329,17 +350,15 @@ draw_title_line() {
     local color=${3:-$CYAN}
     local text_len=${#text}
     local padding=$(( (width - text_len - 4) / 2 ))
-    local left_pad=""
-    local right_pad=""
-    for ((i=0; i<padding; i++)); do
-        left_pad+="$LINE_H"
-        right_pad+="$LINE_H"
-    done
+    local left_pad
+    local right_pad
+    left_pad=$(printf '%*s' "$padding" '' | tr ' ' "$LINE_H")
+    right_pad=$(printf '%*s' "$padding" '' | tr ' ' "$LINE_H")
     # 处理奇数长度
     local extra=$(( (width - text_len - 4) % 2 ))
-    for ((i=0; i<extra; i++)); do
-        right_pad+="$LINE_H"
-    done
+    if [[ $extra -gt 0 ]]; then
+        right_pad="${right_pad}${LINE_H}"
+    fi
     echo -e "${color}${CORNER_TL}${left_pad}${NC} ${WHITE}${BOLD}${text}${NC} ${color}${right_pad}${CORNER_TR}${NC}"
 }
 
@@ -491,7 +510,8 @@ show_machine_info() {
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
     
     # 获取公网 IPv4
-    local ipv4=$(curl -s4 --connect-timeout 3 ip.sb 2>/dev/null || curl -s4 --connect-timeout 3 ifconfig.me 2>/dev/null || echo "获取失败")
+    local ipv4=$(get_public_ipv4)
+    [[ -z "$ipv4" ]] && ipv4="获取失败"
     echo -e "  ${CYAN}公网 IPv4${NC}   │ ${ipv4}"
     
     # 获取公网 IPv6
@@ -2690,7 +2710,7 @@ show_route_menu() {
                 log_info "正在下载回程路由测试脚本..."
                 log_info "此脚本将检测从 VPS 到中国各地区的回程路由线路"
                 echo ""
-                if curl -sL https://raw.githubusercontent.com/zhanghanyun/backtrace/main/install.sh -o backtrace.sh 2>/dev/null; then
+                if curl -fsL https://raw.githubusercontent.com/zhanghanyun/backtrace/main/install.sh -o backtrace.sh 2>/dev/null; then
                     log_success "下载成功，开始执行..."
                     echo ""
                     chmod +x backtrace.sh && bash backtrace.sh || true
@@ -2710,7 +2730,7 @@ show_route_menu() {
                 echo ""
                 
                 # 显示当前VPS的IP
-                local vps_ip=$(curl -4 -s --max-time 5 ip.sb 2>/dev/null || curl -4 -s --max-time 5 ifconfig.me 2>/dev/null)
+                local vps_ip=$(get_public_ipv4)
                 if [[ -n "$vps_ip" ]]; then
                     echo -e "  ${WHITE}${BOLD}您的 VPS IP: ${CYAN}${vps_ip}${NC}"
                     echo ""
@@ -2720,7 +2740,7 @@ show_route_menu() {
                 echo ""
                 
                 # 使用官方安装脚本
-                if curl -sL https://raw.githubusercontent.com/nxtrace/NTrace-core/main/nt_install.sh -o nt_install.sh 2>/dev/null; then
+                if curl -fsL https://raw.githubusercontent.com/nxtrace/NTrace-core/main/nt_install.sh -o nt_install.sh 2>/dev/null; then
                     bash nt_install.sh || true
                     rm -f nt_install.sh
                     echo ""
@@ -2774,12 +2794,12 @@ show_test_menu() {
                 echo ""
                 log_info "开始运行 融合怪 (ecs.sh) 测试脚本..."
                 log_info "尝试从主链接 (gitlab) 下载..."
-                if curl -L https://gitlab.com/spiritysdx/za/-/raw/main/ecs.sh -o ecs.sh; then
+                if curl -fL https://gitlab.com/spiritysdx/za/-/raw/main/ecs.sh -o ecs.sh; then
                     log_success "主链接下载成功。"
                     chmod +x ecs.sh && bash ecs.sh
                 else
                     log_warning "主链接下载失败，尝试从备用链接 (github) 下载..."
-                    if curl -L https://github.com/spiritLHLS/ecs/raw/main/ecs.sh -o ecs.sh; then
+                    if curl -fL https://github.com/spiritLHLS/ecs/raw/main/ecs.sh -o ecs.sh; then
                         log_success "备用链接下载成功。"
                         chmod +x ecs.sh && bash ecs.sh
                     else
@@ -2801,7 +2821,7 @@ show_test_menu() {
                 else
                     # 从 GitHub 下载
                     log_info "正在从 GitHub 下载咸鱼 IP 检测脚本..."
-                    if curl -sL "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/scripts/fish_ipcheck.sh" -o fish_ipcheck.sh 2>/dev/null; then
+                    if curl -fsL "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/scripts/fish_ipcheck.sh" -o fish_ipcheck.sh 2>/dev/null; then
                         log_success "下载成功，开始执行..."
                         echo ""
                         bash fish_ipcheck.sh || true
@@ -2862,7 +2882,7 @@ show_test_menu() {
                 echo ""
                 
                 # 使用 bench.sh 的三网测速
-                if curl -sL https://raw.githubusercontent.com/uxh/superspeed/master/superspeed.sh -o superspeed.sh 2>/dev/null; then
+                if curl -fsL https://raw.githubusercontent.com/uxh/superspeed/master/superspeed.sh -o superspeed.sh 2>/dev/null; then
                     log_success "下载成功，开始执行..."
                     echo ""
                     bash superspeed.sh || true
@@ -2974,13 +2994,13 @@ show_dd_menu() {
                     press_any_key
                     continue
                 fi
-                
+
                 log_info "尝试从主链接 (github) 下载 reinstall.sh..."
-                if curl -L -o reinstall.sh https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh; then
+                if curl -fL -o reinstall.sh https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh; then
                     log_success "主链接下载成功。"
                 else
                     log_warning "主链接下载失败，尝试从备用链接 (cnb.cool) 下载..."
-                    if ! curl -L -o reinstall.sh https://cnb.cool/bin456789/reinstall/-/git/raw/main/reinstall.sh; then
+                    if ! curl -fL -o reinstall.sh https://cnb.cool/bin456789/reinstall/-/git/raw/main/reinstall.sh; then
                          log_error "主链接和备用链接均下载失败！"
                          rm -f reinstall.sh
                          press_any_key
@@ -2988,10 +3008,27 @@ show_dd_menu() {
                     fi
                     log_success "备用链接下载成功。"
                 fi
-                log_warning "脚本已下载，即将执行。请根据后续脚本提示操作！"
-                press_any_key
+
+                # 验证下载的文件是否为有效的 shell 脚本
+                if [[ ! -f reinstall.sh ]] || ! head -1 reinstall.sh | grep -qE '^#!.*bash'; then
+                    log_error "下载的文件不是有效的 shell 脚本！"
+                    rm -f reinstall.sh
+                    press_any_key
+                    continue
+                fi
+
+                log_info "脚本已下载，即将执行。请根据后续脚本提示操作！"
+                echo ""
                 bash reinstall.sh
+                local reinstall_exit=$?
                 rm -f reinstall.sh
+                echo ""
+                if [[ $reinstall_exit -ne 0 ]]; then
+                    log_error "reinstall.sh 执行异常退出 (退出码: $reinstall_exit)"
+                else
+                    log_success "reinstall.sh 已执行完成。"
+                fi
+                press_any_key
                 ;;
             2)
                 clear
@@ -3006,16 +3043,39 @@ show_dd_menu() {
                 fi
 
                 log_info "尝试从主链接 (github) 下载 OsMutation.sh..."
-                if curl -sL -o OsMutation.sh https://raw.githubusercontent.com/LloydAsp/OsMutation/main/OsMutation.sh; then
-                    log_success "脚本下载成功。"
-                    log_warning "脚本已下载，即将执行。请根据后续脚本提示操作！"
-                    press_any_key
-                    chmod u+x OsMutation.sh && ./OsMutation.sh
-                    rm -f OsMutation.sh
+                if curl -fL -o OsMutation.sh https://raw.githubusercontent.com/LloydAsp/OsMutation/main/OsMutation.sh; then
+                    log_success "主链接下载成功。"
                 else
-                    log_error "脚本下载失败！"
-                    press_any_key
+                    log_warning "主链接下载失败，尝试从备用链接 (cnb.cool) 下载..."
+                    if ! curl -fL -o OsMutation.sh https://cnb.cool/LloydAsp/OsMutation/-/raw/main/OsMutation.sh; then
+                        log_error "主链接和备用链接均下载失败！"
+                        rm -f OsMutation.sh
+                        press_any_key
+                        continue
+                    fi
+                    log_success "备用链接下载成功。"
                 fi
+
+                # 验证下载的文件是否为有效的 shell 脚本
+                if [[ ! -f OsMutation.sh ]] || ! head -1 OsMutation.sh | grep -qE '^#!.*bash'; then
+                    log_error "下载的文件不是有效的 shell 脚本！"
+                    rm -f OsMutation.sh
+                    press_any_key
+                    continue
+                fi
+
+                log_info "脚本已下载，即将执行。请根据后续脚本提示操作！"
+                echo ""
+                bash OsMutation.sh
+                local osmu_exit=$?
+                rm -f OsMutation.sh
+                echo ""
+                if [[ $osmu_exit -ne 0 ]]; then
+                    log_error "OsMutation.sh 执行异常退出 (退出码: $osmu_exit)"
+                else
+                    log_success "OsMutation.sh 已执行完成。"
+                fi
+                press_any_key
                 ;;
             0)
                 break
@@ -3050,7 +3110,7 @@ show_optimization_menu() {
                 draw_title_line "BBR/TCP 优化" 50
                 echo ""
                 log_info "正在下载并执行 BBR/TCP 优化脚本..."
-                if curl -sL https://sh.nekoneko.cloud/tools.sh -o tools.sh; then
+                if curl -fsL https://sh.nekoneko.cloud/tools.sh -o tools.sh; then
                     bash tools.sh
                     rm -f tools.sh
                 else
@@ -3063,7 +3123,7 @@ show_optimization_menu() {
                 draw_title_line "SWAP 管理" 50
                 echo ""
                 log_info "正在下载并执行 SWAP 管理脚本..."
-                if curl -sL https://www.moerats.com/usr/shell/swap.sh -o swap.sh; then
+                if curl -fsL https://www.moerats.com/usr/shell/swap.sh -o swap.sh; then
                     bash swap.sh
                     rm -f swap.sh
                 else
@@ -3077,7 +3137,7 @@ show_optimization_menu() {
                 echo ""
                 log_info "正在下载并执行 WARP 管理脚本..."
                 log_warning "此脚本将接管交互，请根据其提示操作。"
-                if curl -sL "https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh" -o menu.sh; then
+                if curl -fsL "https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh" -o menu.sh; then
                     bash menu.sh
                     rm -f menu.sh
                 else
@@ -4763,21 +4823,21 @@ show_link_nodes_menu() {
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
                 
                 local has_links=0
-                echo "$config" | jq -c '.relay_nodes[]' | while read -r relay; do
+                while read -r relay; do
                     local rid=$(echo "$relay" | jq -r '.id')
                     local rname=$(echo "$relay" | jq -r '.name')
                     local targets=$(echo "$relay" | jq -r '.targets[]' 2>/dev/null)
-                    
+
                     if [[ -n "$targets" ]]; then
                         echo ""
                         echo -e "  ${CYAN}${BOLD}$rname ($rid)${NC}"
-                        echo "$targets" | while read -r tid; do
+                        while read -r tid; do
                             local tname=$(echo "$config" | jq -r ".target_nodes[] | select(.id == \"$tid\") | .name")
                             echo -e "    └─→ $tname ($tid)"
-                        done
+                        done <<< "$targets"
                         has_links=1
                     fi
-                done
+                done <<< "$(echo "$config" | jq -c '.relay_nodes[]')"
                 
                 if [[ $has_links -eq 0 ]]; then
                     echo -e "  ${DIM}暂无配置的关联关系${NC}"
@@ -4863,18 +4923,19 @@ generate_all_gost_scripts() {
         log_info "正在生成线路鸡脚本..."
         echo ""
         
-        echo "$config" | jq -c '.relay_nodes[]' | while read -r relay; do
+        while read -r relay; do
             local rid=$(echo "$relay" | jq -r '.id')
             local rname=$(echo "$relay" | jq -r '.name')
-            
-            local script_file=$(generate_relay_gost_script "$rid")
-            
+
+            local script_file
+            script_file=$(generate_relay_gost_script "$rid")
+
             if [[ $? -eq 0 && -f "$script_file" ]]; then
                 echo -e "  ${GREEN}✓${NC} 已生成线路鸡脚本: ${script_file}"
             else
                 echo -e "  ${RED}✗${NC} 生成失败: $rname"
             fi
-        done
+        done <<< "$(echo "$config" | jq -c '.relay_nodes[]')"
     fi
     
     echo ""
