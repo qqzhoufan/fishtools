@@ -232,6 +232,8 @@ bash <(curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fisht
 | 📦 系统包一键更新 | 一键更新所有已安装软件包 |
 | 📋 系统日志查看 | syslog/认证日志/dmesg/实时跟踪/关键词搜索 |
 | 📊 流量统计 (vnstat) | 月度/日/小时流量统计与实时监控 |
+| 🩺 系统自检诊断 | 检查关键依赖、Docker、GitHub 连通性、磁盘/inode、常用端口占用 |
+| ♻️ 配置备份恢复 | 恢复工具自动备份的 SSH/Nginx/Caddy 等配置文件 |
 
 ---
 
@@ -286,9 +288,32 @@ fish --test      # 进入性能测试菜单
 | 🔗 节点关联 | 线路鸡与落地鸡的灵活关联/取消 |
 | ⚙️ 自动部署 | 生成一键部署脚本，systemd 服务托管 |
 
+> 单文件运行时如果缺少 Gost 辅助脚本，工具会自动从本仓库下载并加载。
+
 ---
 
 ## 👨‍💻 开发者指南
+
+### 源码结构
+
+`fishtools.sh` 是面向用户的一键发布文件；日常开发请修改 `src/` 下的模块文件，然后重新生成发布脚本：
+
+```bash
+bash scripts/build-release.sh
+```
+
+Windows PowerShell 环境也可以运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1
+```
+
+推荐发布前检查：
+
+```bash
+bash -n fishtools.sh scripts/*.sh
+shellcheck fishtools.sh src/**/*.sh scripts/*.sh
+```
 
 ### 如何添加新的预设项目
 
@@ -301,6 +326,10 @@ fish --test      # 进入性能测试菜单
 fishtools/
 ├── fishtools.sh
 ├── README.md
+├── src/
+│   ├── core/
+│   ├── ui/
+│   └── modules/
 └── presets/
     ├── homepage/
     │   └── docker-compose.yaml
@@ -310,10 +339,11 @@ fishtools/
 
 #### 第二步：修改脚本
 
-1. 打开 `fishtools.sh`
+1. 打开 `src/modules/70_deploy.sh`
 2. 找到 `show_preset_deployment_menu` 函数
 3. 在菜单中添加新选项
 4. 在 `case` 语句中添加对应处理
+5. 运行 `bash scripts/build-release.sh` 重新生成 `fishtools.sh`
 
 #### 第三步：提交更改
 

@@ -7,6 +7,10 @@
 #
 # A powerful and modular toolkit for VPS management.
 # =================================================================
+#
+# Release note:
+#   fishtools.sh is generated from src/ by scripts/build-release.sh.
+#   Edit src/* during development, then rebuild the single-file release.
 
 # --- 全局配置 ---
 AUTHOR_GITHUB_USER="qqzhoufan"
@@ -101,21 +105,21 @@ pkg_remove() {
 check_dependencies() {
     local missing_deps=()
     local optional_deps=()
-    
+
     # 必须依赖
     for cmd in curl; do
         if ! command -v "$cmd" &>/dev/null; then
             missing_deps+=("$cmd")
         fi
     done
-    
+
     # 可选依赖（用于特定功能）
     for cmd in bc jq dig; do
         if ! command -v "$cmd" &>/dev/null; then
             optional_deps+=("$cmd")
         fi
     done
-    
+
     # 如果缺少必须依赖，尝试安装
     if [[ ${#missing_deps[@]} -gt 0 ]]; then
         echo -e "${YELLOW}  ⚠ 检测到缺少必要依赖: ${missing_deps[*]}${NC}"
@@ -128,7 +132,7 @@ check_dependencies() {
             sudo dnf install -y "${missing_deps[@]}" 2>/dev/null
         fi
     fi
-    
+
     # 可选依赖提示
     if [[ ${#optional_deps[@]} -gt 0 ]]; then
         : # 静默处理，不影响正常使用
@@ -140,13 +144,13 @@ check_update() {
     local remote_version
     remote_version=$(curl -s --max-time 3 "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/fishtools.sh" 2>/dev/null | grep -oP 'VERSION="v\K[0-9.]+' | head -1)
     local current_version="${VERSION#v}"
-    
+
     if [[ -n "$remote_version" && "$remote_version" != "$current_version" ]]; then
         echo ""
         echo -e "${YELLOW}  ╭───────────────────────────────────────────╮${NC}"
         echo -e "${YELLOW}  │${NC}  ${WHITE}${BOLD}发现新版本 ${GREEN}v${remote_version}${NC} ${DIM}(当前 ${VERSION})${NC}          ${YELLOW}│${NC}"
         echo -e "${YELLOW}  │${NC}  运行以下命令更新:                        ${YELLOW}│${NC}"
-        echo -e "${YELLOW}  │${NC}  ${CYAN}curl -sL bit.ly/fishtools | bash${NC}        ${YELLOW}│${NC}"
+        echo -e "${YELLOW}  │${NC}  ${CYAN}fish --update${NC}                           ${YELLOW}│${NC}"
         echo -e "${YELLOW}  ╰───────────────────────────────────────────╯${NC}"
         echo ""
     fi
@@ -194,21 +198,35 @@ handle_args() {
             ;;
         -u|--update)
             echo -e "${CYAN}  ℹ 正在检查更新...${NC}"
-            local tmp_file="/tmp/fishtools_new.sh"
-            if curl -sL "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/fishtools.sh" -o "$tmp_file" 2>/dev/null; then
+            local script_dir
+            script_dir="$(dirname "$SCRIPT_PATH")"
+            local tmp_file
+            tmp_file="$(mktemp "${script_dir}/.fishtools_new.XXXXXX" 2>/dev/null || mktemp /tmp/fishtools_new.XXXXXX)"
+            if curl -fsSL "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/fishtools.sh" -o "$tmp_file" 2>/dev/null; then
                 local remote_ver=$(grep -oP 'VERSION="v\K[0-9.]+' "$tmp_file" | head -1)
                 local current_ver="${VERSION#v}"
-                if [[ "$remote_ver" != "$current_ver" ]]; then
+                if [[ -z "$remote_ver" ]]; then
+                    echo -e "${RED}  ✗ 更新文件校验失败：未找到版本号${NC}"
+                    rm -f "$tmp_file"
+                elif command -v bash &>/dev/null && ! bash -n "$tmp_file" 2>/dev/null; then
+                    echo -e "${RED}  ✗ 更新文件语法检查失败，已取消替换${NC}"
+                    rm -f "$tmp_file"
+                elif [[ "$remote_ver" != "$current_ver" ]]; then
                     echo -e "${GREEN}  ✓ 发现新版本 v${remote_ver}，正在更新...${NC}"
                     chmod +x "$tmp_file"
-                    mv "$tmp_file" "$SCRIPT_PATH"
-                    echo -e "${GREEN}  ✓ 更新完成！请重新运行脚本。${NC}"
+                    if mv "$tmp_file" "$SCRIPT_PATH" 2>/dev/null || sudo mv "$tmp_file" "$SCRIPT_PATH"; then
+                        echo -e "${GREEN}  ✓ 更新完成！请重新运行脚本。${NC}"
+                    else
+                        echo -e "${RED}  ✗ 替换脚本失败，请检查权限${NC}"
+                        rm -f "$tmp_file"
+                    fi
                 else
                     echo -e "${GREEN}  ✓ 已是最新版本 ${VERSION}${NC}"
                     rm -f "$tmp_file"
                 fi
             else
                 echo -e "${RED}  ✗ 检查更新失败${NC}"
+                rm -f "$tmp_file"
             fi
             exit 0
             ;;
@@ -333,6 +351,189 @@ log_error() {
     echo -e "${RED}  ✗ ${NC}$1"
 }
 
+# --- 通用安全与校验函数 ---
+is_valid_port() {
+    local port="$1"
+    [[ "$port" =~ ^[0-9]+$ ]] && [[ "$port" -ge 1 ]] && [[ "$port" -le 65535 ]]
+}
+
+is_valid_timezone() {
+    local tz="$1"
+    [[ "$tz" =~ ^[A-Za-z0-9_./+-]+$ ]] && [[ "$tz" != */../* ]] && [[ "$tz" != ../* ]]
+}
+
+is_valid_domain() {
+    local domain="$1"
+    [[ "$domain" =~ ^(\*\.)?[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$ ]] && [[ "$domain" == *.* ]]
+}
+
+normalize_backend_url() {
+    local backend="$1"
+    if [[ "$backend" == http://* || "$backend" == https://* ]]; then
+        echo "$backend"
+    else
+        echo "http://${backend}"
+    fi
+}
+
+is_valid_backend_url() {
+    local backend="$1"
+    [[ "$backend" =~ ^https?://[A-Za-z0-9._-]+(:[0-9]{1,5})?$ ]] || return 1
+    local port="${backend##*:}"
+    if [[ "$port" =~ ^[0-9]+$ && "$backend" == *:* ]]; then
+        is_valid_port "$port"
+        return $?
+    fi
+    return 0
+}
+
+is_safe_project_dir() {
+    local dir="$1"
+    [[ "$dir" == /* ]] || return 1
+    [[ "$dir" != *$'\n'* && "$dir" != *$'\r'* ]] || return 1
+    [[ "$dir" != *"/../"* && "$dir" != */.. && "$dir" != */. ]] || return 1
+    case "$dir" in
+        "/"|"/bin"|"/boot"|"/dev"|"/etc"|"/home"|"/lib"|"/lib64"|"/opt"|"/proc"|"/root"|"/run"|"/sbin"|"/srv"|"/sys"|"/tmp"|"/usr"|"/usr/local"|"/usr/local/bin"|"/var"|"/var/lib")
+            return 1
+            ;;
+    esac
+    return 0
+}
+
+cleanup_failed_project_dir() {
+    local project_dir="$1"
+    local dest_file="$2"
+    local was_created="$3"
+
+    if [[ "$was_created" == "1" ]] && is_safe_project_dir "$project_dir"; then
+        sudo rm -rf -- "$project_dir"
+    else
+        sudo rm -f -- "$dest_file"
+    fi
+}
+
+safe_clean_tmp_files() {
+    sudo find /tmp -xdev -mindepth 1 -maxdepth 1 -mmin +60 \
+        ! -type s ! -name '.X11-unix' ! -name '.ICE-unix' \
+        -exec rm -rf -- {} + 2>/dev/null || true
+}
+
+safe_clean_user_cache() {
+    [[ -d "$HOME/.cache" ]] || return 0
+    find "$HOME/.cache" -mindepth 1 -maxdepth 1 -mtime +7 \
+        -exec rm -rf -- {} + 2>/dev/null || true
+}
+
+generate_secret() {
+    local length="${1:-24}"
+    local secret=""
+    if command -v openssl &>/dev/null; then
+        secret=$(openssl rand -base64 48 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c "$length")
+    fi
+    if [[ -z "$secret" ]]; then
+        secret=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$length")
+    fi
+    if [[ -z "$secret" ]]; then
+        secret="fish$(date +%s%N)"
+    fi
+    echo "$secret"
+}
+
+test_sshd_config() {
+    if command -v sshd &>/dev/null; then
+        sudo "$(command -v sshd)" -t
+    elif [[ -x /usr/sbin/sshd ]]; then
+        sudo /usr/sbin/sshd -t
+    else
+        log_warning "未找到 sshd 命令，已跳过 SSH 配置语法检查"
+        return 0
+    fi
+}
+
+backup_config_file() {
+    local file_path="$1"
+    [[ -e "$file_path" ]] || return 0
+
+    local backup_dir="/var/backups/fishtools"
+    local timestamp
+    local safe_name
+    local backup_file
+    timestamp=$(date +%Y%m%d%H%M%S)
+    safe_name="${file_path#/}"
+    safe_name="${safe_name//\//_}"
+    backup_file="${backup_dir}/${safe_name}.${timestamp}.bak"
+
+    sudo mkdir -p "$backup_dir" || return 1
+    sudo cp -a "$file_path" "$backup_file" || return 1
+    echo "$file_path" | sudo tee "${backup_file}.path" >/dev/null 2>&1 || true
+    echo "$backup_file"
+}
+
+is_port_in_use() {
+    local port="$1"
+    is_valid_port "$port" || return 1
+
+    if command -v ss &>/dev/null; then
+        ss -tuln 2>/dev/null | awk '{print $5}' | grep -Eq "(:|\\])${port}$"
+    elif command -v netstat &>/dev/null; then
+        netstat -tuln 2>/dev/null | awk '{print $4}' | grep -Eq "(:|\\])${port}$"
+    elif command -v lsof &>/dev/null; then
+        lsof -iTCP:"$port" -sTCP:LISTEN -P -n &>/dev/null || lsof -iUDP:"$port" -P -n &>/dev/null
+    else
+        return 1
+    fi
+}
+
+confirm_port_available() {
+    local port="$1"
+    local label="${2:-端口}"
+
+    if is_port_in_use "$port"; then
+        log_warning "${label} ${port} 已被占用，继续可能导致服务启动失败。"
+        read -p "是否仍要继续? (y/n): " continue_with_used_port </dev/tty
+        [[ "$continue_with_used_port" == "y" || "$continue_with_used_port" == "Y" ]]
+        return $?
+    fi
+    return 0
+}
+
+source_repo_script() {
+    local script_name="$1"
+    local required_func="$2"
+    local script_path
+    local script_paths=(
+        "${SCRIPT_PATH%/*}/scripts/${script_name}"
+        "$(dirname "$SCRIPT_PATH")/scripts/${script_name}"
+        "/opt/fishtools/scripts/${script_name}"
+        "./scripts/${script_name}"
+    )
+
+    for script_path in "${script_paths[@]}"; do
+        if [[ -f "$script_path" ]] && source "$script_path" 2>/dev/null; then
+            if [[ -z "$required_func" ]] || declare -F "$required_func" >/dev/null; then
+                return 0
+            fi
+        fi
+    done
+
+    local uid_part="${EUID:-$(id -u 2>/dev/null || echo 0)}"
+    local cache_dir="${TMPDIR:-/tmp}/fishtools-scripts-${uid_part}"
+    local cached_script="${cache_dir}/${script_name}"
+    local url="https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/scripts/${script_name}"
+
+    mkdir -p "$cache_dir" || return 1
+    if curl -fsSL "$url" -o "$cached_script" 2>/dev/null; then
+        chmod 600 "$cached_script" 2>/dev/null || true
+        if bash -n "$cached_script" 2>/dev/null && source "$cached_script" 2>/dev/null; then
+            if [[ -z "$required_func" ]] || declare -F "$required_func" >/dev/null; then
+                return 0
+            fi
+        fi
+    fi
+
+    return 1
+}
+
 # --- 绘制工具函数 ---
 # 绘制水平线
 draw_line() {
@@ -400,12 +601,12 @@ press_any_key() {
 show_logo() {
     echo -e "${CYAN}"
     cat << 'EOF'
-    _____ _     _   _____           _     
-   |  ___(_)___| |_|_   _|__   ___ | |___ 
+    _____ _     _   _____           _
+   |  ___(_)___| |_|_   _|__   ___ | |___
    | |_  | / __| '_ \| |/ _ \ / _ \| / __|
    |  _| | \__ \ | | | | (_) | (_) | \__ \
    |_|   |_|___/_| |_|_|\___/ \___/|_|___/
-                                          
+
 EOF
     echo -e "${NC}"
     echo -e "${GRAY}           咸鱼工具箱 ${VERSION} by 咸鱼银河${NC}"
@@ -472,7 +673,7 @@ show_machine_info() {
     clear
     draw_title_line "VPS 基本信息" 50
     echo ""
-    
+
     # 基础硬件信息
     echo -e "  ${WHITE}${BOLD}硬件信息${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
@@ -481,7 +682,7 @@ show_machine_info() {
     echo -e "  ${CYAN}内存总量${NC}    │ $(free -m | awk 'NR==2{print $2}') MB"
     echo -e "  ${CYAN}磁盘总量${NC}    │ $(df -h / | awk 'NR==2{print $2}')"
     echo -e "  ${CYAN}系统架构${NC}    │ $(uname -m)"
-    
+
     # 虚拟化检测
     local virt_type="物理机"
     if command -v systemd-detect-virt &>/dev/null; then
@@ -493,34 +694,34 @@ show_machine_info() {
         virt_type="虚拟机"
     fi
     echo -e "  ${CYAN}虚拟化${NC}      │ ${virt_type}"
-    
+
     echo ""
     echo -e "  ${WHITE}${BOLD}系统信息${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
     echo -e "  ${CYAN}操作系统${NC}    │ $(. /etc/os-release && echo $PRETTY_NAME)"
     echo -e "  ${CYAN}内核版本${NC}    │ $(uname -r)"
     echo -e "  ${CYAN}运行时间${NC}    │ $(uptime -p 2>/dev/null | sed 's/up //' || uptime | awk -F'up ' '{print $2}' | awk -F',' '{print $1}')"
-    
+
     # 负载
     local load_avg=$(cat /proc/loadavg | awk '{print $1, $2, $3}')
     echo -e "  ${CYAN}系统负载${NC}    │ ${load_avg} (1/5/15分钟)"
-    
+
     echo ""
     echo -e "  ${WHITE}${BOLD}网络信息${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
-    
+
     # 获取公网 IPv4
     local ipv4=$(get_public_ipv4)
     [[ -z "$ipv4" ]] && ipv4="获取失败"
     echo -e "  ${CYAN}公网 IPv4${NC}   │ ${ipv4}"
-    
+
     # 获取公网 IPv6
     local ipv6=$(curl -s6 --connect-timeout 3 ip.sb 2>/dev/null || echo "无/获取失败")
     echo -e "  ${CYAN}公网 IPv6${NC}   │ ${ipv6}"
-    
+
     # 主机名
     echo -e "  ${CYAN}主机名${NC}      │ $(hostname)"
-    
+
     echo ""
     draw_footer 50
 }
@@ -529,19 +730,19 @@ show_live_performance() {
     clear
     draw_title_line "VPS 实时性能" 50
     echo ""
-    
+
     echo -e "  ${WHITE}${BOLD}CPU & 内存${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
-    
+
     # CPU 使用率
     local cpu_usage
     cpu_usage=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}')
-    
+
     # IO 等待
     local iowait
     iowait=$(top -bn1 | grep "Cpu(s)" | awk '{for(i=1;i<=NF;i++) if($i ~ /wa/) print $(i-1)}' | tr -d ',')
     [[ -z "$iowait" ]] && iowait="0.0"
-    
+
     # CPU 使用率颜色
     local cpu_color=$GREEN
     if (( $(echo "$cpu_usage > 70" | bc -l) )); then
@@ -555,7 +756,7 @@ show_live_performance() {
     local mem_total=$(free -m | awk 'NR==2{print $2}')
     local mem_used=$(free -m | awk 'NR==2{print $3}')
     local mem_percent=$((mem_used * 100 / mem_total))
-    
+
     local mem_color=$GREEN
     if (( mem_percent > 80 )); then
         mem_color=$RED
@@ -563,7 +764,7 @@ show_live_performance() {
         mem_color=$YELLOW
     fi
     echo -e "  ${CYAN}内存使用${NC}    │ ${mem_color}${mem_used}MB${NC} / ${mem_total}MB (${mem_color}${mem_percent}%${NC})"
-    
+
     # SWAP 使用
     local swap_total=$(free -m | awk 'NR==3{print $2}')
     local swap_used=$(free -m | awk 'NR==3{print $3}')
@@ -579,15 +780,15 @@ show_live_performance() {
     else
         echo -e "  ${CYAN}SWAP 使用${NC}   │ ${GRAY}未配置${NC}"
     fi
-    
+
     echo ""
     echo -e "  ${WHITE}${BOLD}磁盘 & 网络${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
-    
+
     # 磁盘使用
     local disk_info=$(df -h / | awk 'NR==2{printf "%s / %s (%s)", $3, $2, $5}')
     local disk_percent=$(df -h / | awk 'NR==2{print $5}' | tr -d '%')
-    
+
     local disk_color=$GREEN
     if (( disk_percent > 80 )); then
         disk_color=$RED
@@ -595,16 +796,16 @@ show_live_performance() {
         disk_color=$YELLOW
     fi
     echo -e "  ${CYAN}磁盘空间${NC}    │ ${disk_color}${disk_info}${NC}"
-    
+
     # 网络连接数
     local tcp_conn=$(ss -t state established 2>/dev/null | wc -l)
     local tcp_listen=$(ss -tln 2>/dev/null | grep -c LISTEN || echo 0)
     echo -e "  ${CYAN}网络连接${NC}    │ TCP 已建立: ${tcp_conn}  监听端口: ${tcp_listen}"
-    
+
     # 系统负载
     local load_avg=$(cat /proc/loadavg | awk '{print $1, $2, $3}')
     echo -e "  ${CYAN}系统负载${NC}    │ ${load_avg}"
-    
+
     echo ""
     echo -e "  ${DIM}(此为快照信息，非持续刷新)${NC}"
     echo ""
@@ -615,22 +816,22 @@ show_live_performance() {
 show_network_traffic() {
     # 获取所有活动网卡（排除 lo）
     local interfaces=$(ip -o link show | awk -F': ' '{print $2}' | grep -v lo | tr '\n' ' ')
-    
+
     # 如果没有找到网卡，使用默认的 eth0
     if [[ -z "$interfaces" ]]; then
         interfaces="eth0"
     fi
-    
+
     # 获取默认网关所在的网卡（公网网卡）
     local default_iface=$(ip route | grep default | awk '{print $5}' | head -1)
-    
+
     # 初始化上一次的采样数据
     declare -A rx_prev tx_prev
     for iface in $interfaces; do
         rx_prev[$iface]=$(cat /proc/net/dev 2>/dev/null | grep -w "$iface" | awk '{print $2}')
         tx_prev[$iface]=$(cat /proc/net/dev 2>/dev/null | grep -w "$iface" | awk '{print $10}')
     done
-    
+
     # 实时刷新循环
     while true; do
         clear
@@ -638,35 +839,35 @@ show_network_traffic() {
         echo ""
         echo -e "  ${WHITE}${BOLD}网卡流量统计${NC}  ${DIM}(每2秒刷新，按 q 退出)${NC}"
         echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
-        
+
         for iface in $interfaces; do
             # 获取当前数据
             local rx_curr=$(cat /proc/net/dev 2>/dev/null | grep -w "$iface" | awk '{print $2}')
             local tx_curr=$(cat /proc/net/dev 2>/dev/null | grep -w "$iface" | awk '{print $10}')
-            
+
             # 跳过无效数据
             if [[ -z "$rx_curr" || -z "$tx_curr" || "$rx_curr" == "0" ]]; then
                 continue
             fi
-            
+
             # 获取上次数据
             local rx_last=${rx_prev[$iface]:-$rx_curr}
             local tx_last=${tx_prev[$iface]:-$tx_curr}
-            
+
             # 计算速率 (bytes/2s -> KB/s)
             local rx_diff=$((rx_curr - rx_last))
             local tx_diff=$((tx_curr - tx_last))
             local rx_rate=$((rx_diff / 2 / 1024))
             local tx_rate=$((tx_diff / 2 / 1024))
-            
+
             # 更新上次数据
             rx_prev[$iface]=$rx_curr
             tx_prev[$iface]=$tx_curr
-            
+
             # 计算总流量 (使用 awk 进行浮点运算)
             local rx_total=$(awk "BEGIN {printf \"%.2f\", $rx_curr / 1024 / 1024 / 1024}")
             local tx_total=$(awk "BEGIN {printf \"%.2f\", $tx_curr / 1024 / 1024 / 1024}")
-            
+
             # 判断是公网还是内网网卡
             local iface_type=""
             if [[ "$iface" == "$default_iface" ]]; then
@@ -674,7 +875,7 @@ show_network_traffic() {
             else
                 iface_type="${GRAY}[内网]${NC}"
             fi
-            
+
             # 速率单位自动调整
             local rx_display tx_display
             if [[ $rx_rate -ge 1024 ]]; then
@@ -687,16 +888,16 @@ show_network_traffic() {
             else
                 tx_display="${tx_rate} KB/s"
             fi
-            
+
             echo ""
             echo -e "  ${CYAN}${BOLD}$iface${NC} $iface_type"
             echo -e "    ${GREEN}↓ 下载${NC}  ${rx_display}  │  累计 ${rx_total} GB"
             echo -e "    ${YELLOW}↑ 上传${NC}  ${tx_display}  │  累计 ${tx_total} GB"
         done
-        
+
         echo ""
         draw_footer 50
-        
+
         # 等待2秒，期间检测是否按下 q 键退出
         read -t 2 -n 1 key </dev/tty 2>/dev/null || true
         if [[ "$key" == "q" || "$key" == "Q" ]]; then
@@ -711,26 +912,26 @@ show_process_manager() {
         clear
         draw_title_line "进程管理" 50
         echo ""
-        
+
         # 显示CPU占用前10的进程
         echo -e "  ${WHITE}${BOLD}CPU 占用 TOP 10${NC}"
         echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
         echo -e "  ${CYAN}PID      CPU%   MEM%   命令${NC}"
         ps aux --sort=-%cpu | head -11 | tail -10 | awk '{printf "  %-8s %-6s %-6s %s\n", $2, $3, $4, $11}'
-        
+
         echo ""
         echo -e "  ${WHITE}${BOLD}内存 占用 TOP 10${NC}"
         echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
         echo -e "  ${CYAN}PID      CPU%   MEM%   命令${NC}"
         ps aux --sort=-%mem | head -11 | tail -10 | awk '{printf "  %-8s %-6s %-6s %s\n", $2, $3, $4, $11}'
-        
+
         echo ""
         draw_separator 50
         echo -e "  ${YELLOW}输入 PID 杀死进程，或输入 0 返回${NC}"
         draw_footer 50
         echo ""
         read -p "$(echo -e ${CYAN}请输入${NC}): " pid_input </dev/tty
-        
+
         if [[ "$pid_input" == "0" ]]; then
             break
         elif [[ "$pid_input" =~ ^[0-9]+$ ]]; then
@@ -752,11 +953,11 @@ show_open_ports() {
     clear
     draw_title_line "开放端口查看" 50
     echo ""
-    
+
     echo -e "  ${WHITE}${BOLD}TCP 监听端口${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
     echo -e "  ${CYAN}端口       状态       进程${NC}"
-    
+
     if command -v ss &>/dev/null; then
         ss -tlnp 2>/dev/null | grep LISTEN | awk '{
             split($4, a, ":")
@@ -775,11 +976,11 @@ show_open_ports() {
             printf "  %-10s %-10s %s\n", port, "LISTEN", proc
         }' | sort -t' ' -k1 -n | uniq || true
     fi
-    
+
     echo ""
     echo -e "  ${WHITE}${BOLD}UDP 监听端口${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
-    
+
     if command -v ss &>/dev/null; then
         ss -ulnp 2>/dev/null | grep -v "State" | awk '{
             split($4, a, ":")
@@ -798,7 +999,7 @@ show_open_ports() {
             if (NR > 2) printf "  %-10s %-10s %s\n", port, "UDP", proc
         }' | sort -t' ' -k1 -n | uniq || true
     fi
-    
+
     echo ""
     draw_footer 50
 }
@@ -922,7 +1123,7 @@ install_docker_menu() {
         clear
         draw_title_line "Docker 管理" 50
         echo ""
-        
+
         # 显示当前安装状态
         if command -v docker &>/dev/null; then
             local docker_ver=$(docker --version 2>/dev/null | awk '{print $3}' | tr -d ',')
@@ -940,7 +1141,7 @@ install_docker_menu() {
         else
             echo -e "  ${GRAY}○${NC} Docker 未安装"
         fi
-        
+
         if docker compose version &>/dev/null 2>&1; then
             local compose_ver=$(docker compose version 2>/dev/null | awk '{print $4}')
             echo -e "  ${GREEN}✓${NC} Docker Compose 已安装 (${compose_ver})"
@@ -948,7 +1149,7 @@ install_docker_menu() {
             echo -e "  ${GRAY}○${NC} Docker Compose 未安装"
         fi
         echo ""
-        
+
         echo -e "  ${WHITE}${BOLD}【安装与卸载】${NC}"
         draw_menu_item "1" "🇨🇳" "使用腾讯云源安装 (国内首选)"
         draw_menu_item "2" "🇨🇳" "使用阿里云源安装"
@@ -971,7 +1172,7 @@ install_docker_menu() {
         draw_footer 50
         echo ""
         read -p "$(echo -e ${CYAN}请输入选择${NC} [0-11]: )" docker_choice </dev/tty
-        
+
         case $docker_choice in
             1)
                 clear
@@ -1194,13 +1395,13 @@ install_docker_menu() {
                     press_any_key
                     continue
                 fi
-                
+
                 # 显示当前占用
                 echo -e "  ${WHITE}${BOLD}当前 Docker 磁盘占用${NC}"
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
                 docker system df 2>/dev/null || true
                 echo ""
-                
+
                 echo -e "  ${CYAN}1.${NC} 清理悬空镜像 (无标签镜像)"
                 echo -e "  ${CYAN}2.${NC} 清理已停止的容器"
                 echo -e "  ${CYAN}3.${NC} 清理未使用的网络"
@@ -1330,7 +1531,7 @@ install_nginx_menu() {
         clear
         draw_title_line "Nginx 管理" 50
         echo ""
-        
+
         # 显示当前状态
         if command -v nginx &>/dev/null; then
             local nginx_ver=$(nginx -v 2>&1 | awk -F'/' '{print $2}')
@@ -1344,7 +1545,7 @@ install_nginx_menu() {
             echo -e "  ${GRAY}○${NC} Nginx 未安装"
         fi
         echo ""
-        
+
         draw_menu_item "1" "📦" "安装 Nginx"
         draw_menu_item "2" "🔀" "配置反向代理"
         draw_menu_item "3" "🔒" "申请 HTTPS 证书 (Certbot)"
@@ -1359,7 +1560,7 @@ install_nginx_menu() {
         draw_footer 50
         echo ""
         read -p "$(echo -e ${CYAN}请输入选择${NC} [0-8]: )" nginx_choice </dev/tty
-        
+
         case $nginx_choice in
             1)
                 clear
@@ -1383,24 +1584,36 @@ install_nginx_menu() {
                     press_any_key
                     continue
                 fi
-                
+
                 read -p "请输入域名 (如 example.com): " domain </dev/tty
                 read -p "请输入后端地址 (如 127.0.0.1:3000): " backend </dev/tty
-                
-                if [[ -z "$domain" || -z "$backend" ]]; then
-                    log_error "域名和后端地址不能为空！"
+                local backend_url
+                backend_url=$(normalize_backend_url "$backend")
+
+                if ! is_valid_domain "$domain"; then
+                    log_error "域名格式无效！"
                     press_any_key
                     continue
                 fi
-                
-                local conf_file="/etc/nginx/sites-available/${domain}"
+                if ! is_valid_backend_url "$backend_url"; then
+                    log_error "后端地址格式无效，请使用 127.0.0.1:3000 或 http://127.0.0.1:3000。"
+                    press_any_key
+                    continue
+                fi
+
+                local conf_name="${domain//\*/wildcard}"
+                local conf_file="/etc/nginx/sites-available/${conf_name}"
+                local backup_file=""
+                if [[ -e "$conf_file" ]]; then
+                    backup_file=$(backup_config_file "$conf_file" 2>/dev/null || echo "")
+                fi
                 sudo tee "$conf_file" > /dev/null <<EOF
 server {
     listen 80;
     server_name ${domain};
 
     location / {
-        proxy_pass http://${backend};
+        proxy_pass ${backend_url};
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -1409,11 +1622,16 @@ server {
 }
 EOF
                 sudo ln -sf "$conf_file" /etc/nginx/sites-enabled/
-                sudo nginx -t && sudo systemctl reload nginx
-                log_success "反向代理配置完成！"
-                echo -e "  ${CYAN}域名:${NC} ${domain}"
-                echo -e "  ${CYAN}后端:${NC} ${backend}"
-                echo -e "  ${YELLOW}提示: 如需 HTTPS，请选择菜单选项3申请证书${NC}"
+                if sudo nginx -t && sudo systemctl reload nginx; then
+                    log_success "反向代理配置完成！"
+                    echo -e "  ${CYAN}域名:${NC} ${domain}"
+                    echo -e "  ${CYAN}后端:${NC} ${backend_url}"
+                    echo -e "  ${YELLOW}提示: 如需 HTTPS，请选择菜单选项3申请证书${NC}"
+                else
+                    sudo rm -f "/etc/nginx/sites-enabled/${conf_name}" 2>/dev/null || true
+                    [[ -n "$backup_file" ]] && sudo cp "$backup_file" "$conf_file" 2>/dev/null || true
+                    log_error "Nginx 配置测试失败，已移除启用链接，请检查输入。"
+                fi
                 press_any_key
                 ;;
             3)
@@ -1425,7 +1643,7 @@ EOF
                     press_any_key
                     continue
                 fi
-                
+
                 # 检测 Certbot
                 if ! command -v certbot &>/dev/null; then
                     log_info "Certbot 未安装，正在自动安装..."
@@ -1434,20 +1652,20 @@ EOF
                     log_success "Certbot 安装完成！"
                     echo ""
                 fi
-                
+
                 read -p "请输入域名 (如 example.com): " domain </dev/tty
-                
+
                 if [[ -z "$domain" ]]; then
                     log_error "域名不能为空！"
                     press_any_key
                     continue
                 fi
-                
+
                 echo ""
                 log_info "正在为 ${domain} 申请证书..."
                 echo -e "  ${YELLOW}请确保域名已解析到此服务器 IP${NC}"
                 echo ""
-                
+
                 if sudo certbot --nginx -d "$domain" --non-interactive --agree-tos --register-unsafely-without-email; then
                     echo ""
                     log_success "HTTPS 证书申请成功！"
@@ -1531,7 +1749,7 @@ install_caddy_menu() {
         clear
         draw_title_line "Caddy 管理" 50
         echo ""
-        
+
         # 显示当前状态
         if command -v caddy &>/dev/null; then
             local caddy_ver=$(caddy version 2>/dev/null | awk '{print $1}')
@@ -1545,7 +1763,7 @@ install_caddy_menu() {
             echo -e "  ${GRAY}○${NC} Caddy 未安装"
         fi
         echo ""
-        
+
         draw_menu_item "1" "📦" "安装 Caddy"
         draw_menu_item "2" "🔀" "配置反向代理 (自动 HTTPS)"
         draw_menu_item "3" "▶️" "启动 Caddy"
@@ -1559,7 +1777,7 @@ install_caddy_menu() {
         draw_footer 50
         echo ""
         read -p "$(echo -e ${CYAN}请输入选择${NC} [0-7]: )" caddy_choice </dev/tty
-        
+
         case $caddy_choice in
             1)
                 clear
@@ -1586,27 +1804,41 @@ install_caddy_menu() {
                     press_any_key
                     continue
                 fi
-                
+
                 read -p "请输入域名 (如 example.com): " domain </dev/tty
                 read -p "请输入后端地址 (如 127.0.0.1:3000): " backend </dev/tty
-                
-                if [[ -z "$domain" || -z "$backend" ]]; then
-                    log_error "域名和后端地址不能为空！"
+                local backend_url
+                backend_url=$(normalize_backend_url "$backend")
+
+                if ! is_valid_domain "$domain"; then
+                    log_error "域名格式无效！"
                     press_any_key
                     continue
                 fi
-                
+                if ! is_valid_backend_url "$backend_url"; then
+                    log_error "后端地址格式无效，请使用 127.0.0.1:3000 或 http://127.0.0.1:3000。"
+                    press_any_key
+                    continue
+                fi
+
                 # 追加到 Caddyfile
+                local backup_file
+                backup_file=$(backup_config_file /etc/caddy/Caddyfile 2>/dev/null || echo "")
                 echo "" | sudo tee -a /etc/caddy/Caddyfile >/dev/null
                 echo "${domain} {" | sudo tee -a /etc/caddy/Caddyfile >/dev/null
-                echo "    reverse_proxy ${backend}" | sudo tee -a /etc/caddy/Caddyfile >/dev/null
+                echo "    reverse_proxy ${backend_url}" | sudo tee -a /etc/caddy/Caddyfile >/dev/null
                 echo "}" | sudo tee -a /etc/caddy/Caddyfile >/dev/null
-                
-                sudo systemctl reload caddy
-                log_success "反向代理配置完成！"
-                echo -e "  ${CYAN}域名:${NC} ${domain}"
-                echo -e "  ${CYAN}后端:${NC} ${backend}"
-                echo -e "  ${GREEN}Caddy 将自动为该域名申请 HTTPS 证书${NC}"
+
+                if sudo caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1 && sudo systemctl reload caddy; then
+                    log_success "反向代理配置完成！"
+                    echo -e "  ${CYAN}域名:${NC} ${domain}"
+                    echo -e "  ${CYAN}后端:${NC} ${backend_url}"
+                    echo -e "  ${GREEN}Caddy 将自动为该域名申请 HTTPS 证书${NC}"
+                else
+                    [[ -n "$backup_file" ]] && sudo cp "$backup_file" /etc/caddy/Caddyfile 2>/dev/null || true
+                    sudo systemctl reload caddy 2>/dev/null || true
+                    log_error "Caddy 配置测试失败，已恢复原配置。"
+                fi
                 press_any_key
                 ;;
             3)
@@ -1708,7 +1940,7 @@ install_fail2ban_menu() {
         clear
         draw_title_line "fail2ban 安全防护" 50
         echo ""
-        
+
         # 显示当前状态
         if command -v fail2ban-client &>/dev/null; then
             echo -e "  ${GREEN}✓${NC} fail2ban 已安装"
@@ -1723,7 +1955,7 @@ install_fail2ban_menu() {
             echo -e "  ${GRAY}○${NC} fail2ban 未安装"
         fi
         echo ""
-        
+
         draw_menu_item "1" "📦" "安装 fail2ban"
         draw_menu_item "2" "📋" "查看封禁列表"
         draw_menu_item "3" "🔓" "解封指定 IP"
@@ -1735,7 +1967,7 @@ install_fail2ban_menu() {
         draw_footer 50
         echo ""
         read -p "$(echo -e ${CYAN}请输入选择${NC} [0-5]: )" f2b_choice </dev/tty
-        
+
         case $f2b_choice in
             1)
                 clear
@@ -1855,7 +2087,7 @@ install_monitor_menu() {
         clear
         draw_title_line "系统监控工具" 50
         echo ""
-        
+
         # 显示当前状态
         if command -v htop &>/dev/null; then
             echo -e "  ${GREEN}✓${NC} htop 已安装"
@@ -1868,7 +2100,7 @@ install_monitor_menu() {
             echo -e "  ${GRAY}○${NC} btop 未安装"
         fi
         echo ""
-        
+
         echo -e "  ${CYAN}htop${NC}  - 经典轻量，兼容性好"
         echo -e "  ${CYAN}btop${NC}  - 现代美观，功能丰富"
         echo ""
@@ -1883,7 +2115,7 @@ install_monitor_menu() {
         draw_footer 50
         echo ""
         read -p "$(echo -e ${CYAN}请输入选择${NC} [0-5]: )" mon_choice </dev/tty
-        
+
         case $mon_choice in
             1)
                 clear
@@ -1953,7 +2185,7 @@ install_tmux_menu() {
         clear
         draw_title_line "tmux 终端复用" 50
         echo ""
-        
+
         # 显示当前状态
         if command -v tmux &>/dev/null; then
             local tmux_ver=$(tmux -V 2>/dev/null | awk '{print $2}')
@@ -1964,7 +2196,7 @@ install_tmux_menu() {
             echo -e "  ${GRAY}○${NC} tmux 未安装"
         fi
         echo ""
-        
+
         draw_menu_item "1" "📦" "安装 tmux"
         draw_menu_item "2" "➕" "新建会话"
         draw_menu_item "3" "📋" "列出会话"
@@ -1977,7 +2209,7 @@ install_tmux_menu() {
         draw_footer 50
         echo ""
         read -p "$(echo -e ${CYAN}请输入选择${NC} [0-6]: )" tmux_choice </dev/tty
-        
+
         case $tmux_choice in
             1)
                 clear
@@ -2077,7 +2309,7 @@ install_ufw_menu() {
         clear
         draw_title_line "ufw 防火墙" 50
         echo ""
-        
+
         # 显示当前状态
         if command -v ufw &>/dev/null; then
             echo -e "  ${GREEN}✓${NC} ufw 已安装"
@@ -2091,7 +2323,7 @@ install_ufw_menu() {
             echo -e "  ${GRAY}○${NC} ufw 未安装"
         fi
         echo ""
-        
+
         draw_menu_item "1" "📦" "安装 ufw"
         draw_menu_item "2" "✅" "启用防火墙"
         draw_menu_item "3" "❌" "禁用防火墙"
@@ -2106,7 +2338,7 @@ install_ufw_menu() {
         draw_footer 50
         echo ""
         read -p "$(echo -e ${CYAN}请输入选择${NC} [0-8]: )" ufw_choice </dev/tty
-        
+
         case $ufw_choice in
             1)
                 clear
@@ -2241,11 +2473,11 @@ ssh_security_menu() {
         clear
         draw_title_line "SSH 安全配置" 50
         echo ""
-        
+
         # 显示当前状态
         local pass_auth=$(grep -E "^PasswordAuthentication" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}')
         local pubkey_auth=$(grep -E "^PubkeyAuthentication" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}')
-        
+
         echo -e "  ${WHITE}${BOLD}当前 SSH 配置状态${NC}"
         if [[ "$pass_auth" == "no" ]]; then
             echo -e "  ${RED}●${NC} 密码登录: ${RED}已禁用${NC}"
@@ -2257,7 +2489,7 @@ ssh_security_menu() {
         else
             echo -e "  ${GREEN}●${NC} 密钥登录: ${GREEN}已启用${NC}"
         fi
-        
+
         if [[ -f ~/.ssh/authorized_keys ]]; then
             local key_count=$(wc -l < ~/.ssh/authorized_keys 2>/dev/null || echo 0)
             echo -e "  ${CYAN}已授权密钥:${NC} ${key_count} 个"
@@ -2265,7 +2497,7 @@ ssh_security_menu() {
             echo -e "  ${CYAN}已授权密钥:${NC} 0 个"
         fi
         echo ""
-        
+
         draw_menu_item "1" "🔑" "生成 SSH 密钥对"
         draw_menu_item "2" "📥" "添加公钥到授权列表"
         draw_menu_item "3" "🔒" "禁用密码登录 (仅密钥)"
@@ -2280,7 +2512,7 @@ ssh_security_menu() {
         draw_footer 50
         echo ""
         read -p "$(echo -e ${CYAN}请输入选择${NC} [0-8]: )" ssh_choice </dev/tty
-        
+
         case $ssh_choice in
             1)
                 clear
@@ -2291,20 +2523,20 @@ ssh_security_menu() {
                     read -p "是否覆盖生成新密钥? (y/n): " confirm </dev/tty
                     [[ "$confirm" != "y" && "$confirm" != "Y" ]] && { press_any_key; continue; }
                 fi
-                
+
                 echo ""
                 echo -e "  ${CYAN}选择密钥类型:${NC}"
                 echo -e "  1. ED25519 (推荐，更安全更快)"
                 echo -e "  2. RSA 4096 (兼容性好)"
                 echo ""
                 read -p "请选择 [1/2]: " key_type </dev/tty
-                
+
                 echo ""
                 echo -e "  ${CYAN}是否为私钥设置密码保护？${NC}"
                 echo -e "  ${GRAY}(设置密码后，每次使用私钥都需要输入密码)${NC}"
                 echo ""
                 read -p "设置密码保护? (y/n): " use_pass </dev/tty
-                
+
                 local passphrase=""
                 if [[ "$use_pass" == "y" || "$use_pass" == "Y" ]]; then
                     echo ""
@@ -2318,10 +2550,10 @@ ssh_security_menu() {
                         continue
                     fi
                 fi
-                
+
                 mkdir -p ~/.ssh
                 chmod 700 ~/.ssh
-                
+
                 local pubkey_file=""
                 if [[ "$key_type" == "2" ]]; then
                     ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "$passphrase" -C "fishtools-$(date +%Y%m%d)"
@@ -2338,30 +2570,30 @@ ssh_security_menu() {
                     echo -e "  ${CYAN}私钥位置:${NC} ~/.ssh/id_ed25519"
                     echo -e "  ${CYAN}公钥位置:${NC} ~/.ssh/id_ed25519.pub"
                 fi
-                
+
                 # 自动将公钥添加到 authorized_keys
                 cat "$pubkey_file" >> ~/.ssh/authorized_keys
                 chmod 600 ~/.ssh/authorized_keys
                 echo ""
                 echo -e "  ${GREEN}✓ 公钥已自动添加到 authorized_keys${NC}"
-                
+
                 # 自动启用 sshd 公钥认证配置
                 log_info "正在配置 sshd 以启用公钥认证..."
-                
+
                 # 备份 sshd_config
                 sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak.$(date +%Y%m%d%H%M%S) 2>/dev/null || true
-                
+
                 # 启用 PubkeyAuthentication
                 sudo sed -i 's/^#*PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
                 grep -q "^PubkeyAuthentication" /etc/ssh/sshd_config || echo "PubkeyAuthentication yes" | sudo tee -a /etc/ssh/sshd_config > /dev/null
-                
+
                 # 确保 AuthorizedKeysFile 配置正确
                 sudo sed -i 's/^#*AuthorizedKeysFile.*/AuthorizedKeysFile .ssh\/authorized_keys/' /etc/ssh/sshd_config
                 grep -q "^AuthorizedKeysFile" /etc/ssh/sshd_config || echo "AuthorizedKeysFile .ssh/authorized_keys" | sudo tee -a /etc/ssh/sshd_config > /dev/null
-                
+
                 # 重启 sshd 服务使配置生效
                 sudo systemctl restart sshd 2>/dev/null || sudo service ssh restart 2>/dev/null || true
-                
+
                 echo -e "  ${GREEN}✓ sshd 公钥认证已启用并重启服务${NC}"
                 echo ""
                 if [[ -n "$passphrase" ]]; then
@@ -2369,13 +2601,13 @@ ssh_security_menu() {
                 else
                     echo -e "  ${YELLOW}○ 私钥无密码保护${NC}"
                 fi
-                
+
                 # 获取服务器 IP 和当前用户
                 local server_ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "服务器IP")
                 local current_user=$(whoami)
                 local key_name="id_ed25519"
                 [[ "$key_type" == "2" ]] && key_name="id_rsa"
-                
+
                 echo ""
                 echo -e "  ${WHITE}${BOLD}═══════════════════════════════════════════${NC}"
                 echo -e "  ${WHITE}${BOLD}下一步操作 (必读)：${NC}"
@@ -2419,19 +2651,19 @@ ssh_security_menu() {
                 echo -e "  ${WHITE}请粘贴您的公钥内容 (ssh-rsa 或 ssh-ed25519 开头):${NC}"
                 echo ""
                 read -p "公钥: " pubkey </dev/tty
-                
+
                 if [[ -z "$pubkey" ]]; then
                     log_error "公钥不能为空！"
                     press_any_key
                     continue
                 fi
-                
+
                 if ! echo "$pubkey" | grep -qE "^ssh-(rsa|ed25519|ecdsa)"; then
                     log_error "公钥格式不正确！"
                     press_any_key
                     continue
                 fi
-                
+
                 mkdir -p ~/.ssh
                 chmod 700 ~/.ssh
                 echo "$pubkey" >> ~/.ssh/authorized_keys
@@ -2449,32 +2681,32 @@ ssh_security_menu() {
                 echo -e "    1. 已配置密钥登录并测试成功"
                 echo -e "    2. 已保存私钥到本地"
                 echo ""
-                
+
                 if [[ ! -f ~/.ssh/authorized_keys ]] || [[ ! -s ~/.ssh/authorized_keys ]]; then
                     log_error "未检测到已授权的公钥！请先添加公钥。"
                     press_any_key
                     continue
                 fi
-                
+
                 read -p "请输入 'yes' 确认禁用密码登录: " confirm </dev/tty
                 if [[ "$confirm" != "yes" ]]; then
                     log_info "操作已取消。"
                     press_any_key
                     continue
                 fi
-                
+
                 # 备份配置
                 sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak.$(date +%Y%m%d%H%M%S)
-                
+
                 # 修改配置
                 sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
                 sudo sed -i 's/^#*PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
                 sudo sed -i 's/^#*ChallengeResponseAuthentication.*/ChallengeResponseAuthentication no/' /etc/ssh/sshd_config
-                
+
                 # 如果配置项不存在则添加
                 grep -q "^PasswordAuthentication" /etc/ssh/sshd_config || echo "PasswordAuthentication no" | sudo tee -a /etc/ssh/sshd_config
                 grep -q "^PubkeyAuthentication" /etc/ssh/sshd_config || echo "PubkeyAuthentication yes" | sudo tee -a /etc/ssh/sshd_config
-                
+
                 sudo systemctl restart sshd
                 log_success "密码登录已禁用，仅允许密钥登录！"
                 echo ""
@@ -2491,7 +2723,7 @@ ssh_security_menu() {
                     press_any_key
                     continue
                 fi
-                
+
                 sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
                 sudo systemctl restart sshd
                 log_success "密码登录已恢复！"
@@ -2551,13 +2783,13 @@ ssh_security_menu() {
                 [[ -f ~/.ssh/id_rsa ]] && { echo -e "  • ~/.ssh/id_rsa (私钥)"; has_keys=1; }
                 [[ -f ~/.ssh/id_rsa.pub ]] && { echo -e "  • ~/.ssh/id_rsa.pub (公钥)"; has_keys=1; }
                 [[ -f ~/.ssh/authorized_keys ]] && echo -e "  • ~/.ssh/authorized_keys (授权公钥列表)"
-                
+
                 if [[ $has_keys -eq 0 ]]; then
                     echo -e "  ${GRAY}未找到密钥文件${NC}"
                     press_any_key
                     continue
                 fi
-                
+
                 echo ""
                 echo -e "  ${CYAN}选择要删除的内容:${NC}"
                 echo -e "  1. 仅删除私钥 (保留公钥)"
@@ -2566,7 +2798,7 @@ ssh_security_menu() {
                 echo -e "  4. 全部删除"
                 echo ""
                 read -p "请选择 [1-4]: " del_choice </dev/tty
-                
+
                 case $del_choice in
                     1)
                         rm -f ~/.ssh/id_ed25519 ~/.ssh/id_rsa 2>/dev/null
@@ -2701,7 +2933,7 @@ show_route_menu() {
         draw_footer 50
         echo ""
         read -p "$(echo -e ${CYAN}请输入选择${NC} [0-2]: )" route_choice </dev/tty
-        
+
         case $route_choice in
             1)
                 clear
@@ -2728,17 +2960,17 @@ show_route_menu() {
                 log_info "去程 = 从中国访问您的 VPS 时经过的路由"
                 log_info "需要在中国的设备上安装 NextTrace 并追踪到您的 VPS IP"
                 echo ""
-                
+
                 # 显示当前VPS的IP
                 local vps_ip=$(get_public_ipv4)
                 if [[ -n "$vps_ip" ]]; then
                     echo -e "  ${WHITE}${BOLD}您的 VPS IP: ${CYAN}${vps_ip}${NC}"
                     echo ""
                 fi
-                
+
                 log_info "正在安装 NextTrace 路由追踪工具..."
                 echo ""
-                
+
                 # 使用官方安装脚本
                 if curl -fsL https://raw.githubusercontent.com/nxtrace/NTrace-core/main/nt_install.sh -o nt_install.sh 2>/dev/null; then
                     bash nt_install.sh || true
@@ -2858,7 +3090,7 @@ show_test_menu() {
                         fi
                     fi
                 fi
-                
+
                 echo ""
                 if command -v speedtest &>/dev/null; then
                     log_info "开始测速..."
@@ -2880,7 +3112,7 @@ show_test_menu() {
                 log_info "正在下载三网测速脚本..."
                 log_info "将测试电信、联通、移动三大运营商的速度"
                 echo ""
-                
+
                 # 使用 bench.sh 的三网测速
                 if curl -fsL https://raw.githubusercontent.com/uxh/superspeed/master/superspeed.sh -o superspeed.sh 2>/dev/null; then
                     log_success "下载成功，开始执行..."
@@ -2901,14 +3133,14 @@ show_test_menu() {
                 echo ""
                 log_info "开始磁盘 IO 测试..."
                 echo ""
-                
+
                 echo -e "  ${WHITE}${BOLD}顺序写入测试 (1GB)${NC}"
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
                 sync
                 local write_result=$(dd if=/dev/zero of=./test_io_file bs=1M count=1024 conv=fdatasync 2>&1)
                 local write_speed=$(echo "$write_result" | grep -oP '\d+\.?\d*\s*(MB|GB)/s' | tail -1)
                 echo -e "  ${GREEN}写入速度:${NC} ${write_speed:-解析失败}"
-                
+
                 echo ""
                 echo -e "  ${WHITE}${BOLD}顺序读取测试${NC}"
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
@@ -2917,10 +3149,10 @@ show_test_menu() {
                 local read_result=$(dd if=./test_io_file of=/dev/null bs=1M 2>&1)
                 local read_speed=$(echo "$read_result" | grep -oP '\d+\.?\d*\s*(MB|GB)/s' | tail -1)
                 echo -e "  ${GREEN}读取速度:${NC} ${read_speed:-解析失败}"
-                
+
                 # 清理测试文件
                 rm -f ./test_io_file
-                
+
                 echo ""
                 echo -e "  ${WHITE}${BOLD}4K 随机读写测试${NC}"
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
@@ -2935,7 +3167,7 @@ show_test_menu() {
                     echo -e "  ${YELLOW}fio 未安装，跳过 4K 随机读写测试${NC}"
                     echo -e "  ${DIM}可通过 apt install fio 安装${NC}"
                 fi
-                
+
                 echo ""
                 press_any_key
                 ;;
@@ -2946,7 +3178,7 @@ show_test_menu() {
                 log_info "正在下载流媒体解锁检测脚本..."
                 log_info "将检测 Netflix, Disney+, YouTube Premium 等平台解锁状态"
                 echo ""
-                
+
                 # 使用 lmc999/RegionRestrictionCheck
                 if bash <(curl -L -s https://raw.githubusercontent.com/lmc999/RegionRestrictionCheck/main/check.sh) 2>/dev/null; then
                     :
@@ -3164,12 +3396,20 @@ get_project_default_port() {
         nginx-proxy-manager) echo "81" ;;
         navidrome) echo "4533" ;;
         qbittorrent) echo "8081" ;;
-        moontv) echo "3000" ;;
+        moontv) echo "3002" ;;
         portainer) echo "9000" ;;
         alist) echo "5244" ;;
         uptime-kuma) echo "3001" ;;
-        vaultwarden) echo "80" ;;
+        vaultwarden) echo "8088" ;;
         filebrowser) echo "8080" ;;
+        adguardhome) echo "3004" ;;
+        calibre-web) echo "8083" ;;
+        gitea) echo "3003" ;;
+        jellyfin) echo "8096" ;;
+        nextcloud) echo "8090" ;;
+        photoprism) echo "2342" ;;
+        syncthing) echo "8384" ;;
+        transmission) echo "9091" ;;
         *) echo "8080" ;;
     esac
 }
@@ -3178,10 +3418,10 @@ get_project_default_port() {
 show_project_info() {
     local project_name="$1"
     local port=$(get_project_default_port "$project_name")
-    
+
     echo -e "  ${WHITE}${BOLD}项目信息${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
-    
+
     case "$project_name" in
         homepage)
             echo -e "  端口: ${CYAN}${port}${NC}"
@@ -3202,13 +3442,13 @@ show_project_info() {
         qbittorrent)
             echo -e "  端口: ${CYAN}${port} (WebUI), 6881 (BT)${NC}"
             echo -e "  账号: ${CYAN}admin${NC}"
-            echo -e "  密码: ${CYAN}adminadmin${NC}"
+            echo -e "  密码: ${CYAN}docker logs qbittorrent 查看${NC}"
             echo -e "  说明: 高性能 BT/磁力下载器"
             ;;
         moontv)
             echo -e "  端口: ${CYAN}${port}${NC}"
             echo -e "  账号: ${CYAN}admin${NC}"
-            echo -e "  密码: ${CYAN}admin_password${NC}"
+            echo -e "  密码: ${CYAN}部署时自动生成${NC}"
             echo -e "  说明: 影视聚合平台"
             ;;
         portainer)
@@ -3245,64 +3485,141 @@ show_project_info() {
     echo ""
 }
 
+GENERATED_CREDENTIALS=()
+
+harden_preset_secrets() {
+    local project_name="$1"
+    local dest_file="$2"
+    GENERATED_CREDENTIALS=()
+
+    case "$project_name" in
+        moontv)
+            local admin_password
+            admin_password=$(generate_secret 20)
+            sudo sed -i "s|PASSWORD=admin_password|PASSWORD=${admin_password}|g" "$dest_file"
+            GENERATED_CREDENTIALS+=("MoonTV 登录: admin / ${admin_password}")
+            ;;
+        transmission)
+            local admin_password
+            admin_password=$(generate_secret 20)
+            sudo sed -i "s|PASS=admin123|PASS=${admin_password}|g" "$dest_file"
+            GENERATED_CREDENTIALS+=("Transmission 登录: admin / ${admin_password}")
+            ;;
+        gitea)
+            local db_password
+            db_password=$(generate_secret 24)
+            sudo sed -i "s|POSTGRES_PASSWORD=gitea|POSTGRES_PASSWORD=${db_password}|g" "$dest_file"
+            sudo sed -i "s|GITEA__database__PASSWD=gitea|GITEA__database__PASSWD=${db_password}|g" "$dest_file"
+            GENERATED_CREDENTIALS+=("Gitea 数据库密码: ${db_password}")
+            ;;
+        nextcloud)
+            local root_password db_password
+            root_password=$(generate_secret 24)
+            db_password=$(generate_secret 24)
+            sudo sed -i "s|MYSQL_ROOT_PASSWORD=nextcloud_root|MYSQL_ROOT_PASSWORD=${root_password}|g" "$dest_file"
+            sudo sed -i "s|MYSQL_PASSWORD=nextcloud|MYSQL_PASSWORD=${db_password}|g" "$dest_file"
+            GENERATED_CREDENTIALS+=("Nextcloud 数据库 root 密码: ${root_password}")
+            GENERATED_CREDENTIALS+=("Nextcloud 数据库用户密码: ${db_password}")
+            ;;
+        photoprism)
+            local admin_password root_password db_password
+            admin_password=$(generate_secret 20)
+            root_password=$(generate_secret 24)
+            db_password=$(generate_secret 24)
+            sudo sed -i "s|PHOTOPRISM_ADMIN_PASSWORD=admin123|PHOTOPRISM_ADMIN_PASSWORD=${admin_password}|g" "$dest_file"
+            sudo sed -i "s|MYSQL_ROOT_PASSWORD=photoprism_root|MYSQL_ROOT_PASSWORD=${root_password}|g" "$dest_file"
+            sudo sed -i "s|MYSQL_PASSWORD=photoprism|MYSQL_PASSWORD=${db_password}|g" "$dest_file"
+            sudo sed -i "s|PHOTOPRISM_DATABASE_PASSWORD=photoprism|PHOTOPRISM_DATABASE_PASSWORD=${db_password}|g" "$dest_file"
+            GENERATED_CREDENTIALS+=("PhotoPrism 登录: admin / ${admin_password}")
+            GENERATED_CREDENTIALS+=("PhotoPrism 数据库 root 密码: ${root_password}")
+            GENERATED_CREDENTIALS+=("PhotoPrism 数据库用户密码: ${db_password}")
+            ;;
+    esac
+
+    if [[ ${#GENERATED_CREDENTIALS[@]} -gt 0 ]]; then
+        sudo chmod 600 "$dest_file" 2>/dev/null || true
+    fi
+}
+
 # 部署预设项目
 deploy_preset_project() {
     local project_name="$1"
     if [[ -z "$project_name" ]]; then log_error "内部错误。"; return 1; fi
-    
+
     local default_port=$(get_project_default_port "$project_name")
     local project_dir="/opt/${project_name}"
     local dest_file="${project_dir}/docker-compose.yml"
     local url_yaml="https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/presets/${project_name}/docker-compose.yaml"
     local url_yml="https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/presets/${project_name}/docker-compose.yml"
-    
+
     clear
     draw_title_line "部署 ${project_name}" 50
     echo ""
     log_info "即将部署精选项目: ${project_name}"
     echo ""
-    
+
     # 显示项目信息
     show_project_info "$project_name"
-    
+
     # 检查 Docker
-    if ! command -v docker &>/dev/null || ! docker compose version &>/dev/null; then 
+    if ! command -v docker &>/dev/null || ! docker compose version &>/dev/null; then
         log_error "Docker 或 Compose 未安装。"
         return 1
     fi
-    
+
     # 选择部署方式
     echo -e "  ${WHITE}${BOLD}请选择部署方式:${NC}"
     echo -e "  ${CYAN}1.${NC} 使用默认配置 ${DIM}(推荐)${NC}"
     echo -e "  ${CYAN}2.${NC} 自定义配置"
     echo ""
     read -p "请选择 [1-2]: " deploy_mode </dev/tty
-    
+    if [[ "$deploy_mode" != "1" && "$deploy_mode" != "2" ]]; then
+        log_error "无效部署方式。"
+        return 1
+    fi
+
     local custom_dir="$project_dir"
     local custom_port="$default_port"
     local custom_tz="Asia/Shanghai"
-    
+
     if [[ "$deploy_mode" == "2" ]]; then
         echo ""
         echo -e "  ${WHITE}${BOLD}自定义配置${NC}"
         echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
-        
+
         # 自定义安装目录
         read -p "安装目录 [${project_dir}]: " input_dir </dev/tty
         [[ -n "$input_dir" ]] && custom_dir="$input_dir"
-        
+
         # 自定义端口
         read -p "主端口 [${default_port}]: " input_port </dev/tty
         [[ -n "$input_port" ]] && custom_port="$input_port"
-        
+
         # 自定义时区
         read -p "时区 [Asia/Shanghai]: " input_tz </dev/tty
         [[ -n "$input_tz" ]] && custom_tz="$input_tz"
-        
+
         project_dir="$custom_dir"
         dest_file="${project_dir}/docker-compose.yml"
     fi
-    
+
+    if ! is_safe_project_dir "$project_dir"; then
+        log_error "安装目录不安全，请使用类似 /opt/${project_name} 的独立目录。"
+        return 1
+    fi
+    if ! is_valid_port "$custom_port"; then
+        log_error "端口无效，请输入 1-65535 之间的数字。"
+        return 1
+    fi
+    if ! is_valid_timezone "$custom_tz"; then
+        log_error "时区格式无效，请使用类似 Asia/Shanghai 或 Etc/UTC 的格式。"
+        return 1
+    fi
+    if ! confirm_port_available "$custom_port" "主端口"; then
+        log_info "操作已取消。"
+        return 0
+    fi
+
     echo ""
     echo -e "  ${WHITE}${BOLD}部署信息${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
@@ -3310,43 +3627,51 @@ deploy_preset_project() {
     echo -e "  主端口:   ${CYAN}${custom_port}${NC}"
     echo -e "  时区:     ${CYAN}${custom_tz}${NC}"
     echo ""
-    
+
     read -p "确认部署? (y/n): " confirm </dev/tty
-    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then 
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
         log_info "操作已取消。"
         return 0
     fi
-    
+
+    local project_dir_created=0
+    [[ ! -e "$project_dir" ]] && project_dir_created=1
+
     log_info "正在创建项目目录..."
-    sudo mkdir -p "$project_dir"
+    if ! sudo mkdir -p "$project_dir"; then
+        log_error "创建项目目录失败，请检查路径和权限。"
+        return 1
+    fi
     log_info "正在下载配置文件..."
-    
-    if sudo curl -sLf -o "${dest_file}" "${url_yaml}"; then 
+
+    if sudo curl -sLf -o "${dest_file}" "${url_yaml}"; then
         log_success "成功下载 docker-compose.yaml。"
     else
         log_warning "未找到 docker-compose.yaml，正在尝试 docker-compose.yml ..."
-        if sudo curl -sLf -o "${dest_file}" "${url_yml}"; then 
+        if sudo curl -sLf -o "${dest_file}" "${url_yml}"; then
             log_success "成功下载 docker-compose.yml。"
-        else 
+        else
             log_error "下载失败！"
-            sudo rm -rf "$project_dir"
+            cleanup_failed_project_dir "$project_dir" "$dest_file" "$project_dir_created"
             return 1
         fi
     fi
-    
+
     # 如果是自定义配置，替换配置文件中的端口和时区
     if [[ "$deploy_mode" == "2" ]]; then
         log_info "正在应用自定义配置..."
-        # 替换端口 (处理常见格式)
-        sudo sed -i "s/:${default_port}/:${custom_port}/g" "${dest_file}" 2>/dev/null || true
+        # 只替换端口映射左侧的宿主机端口，避免改坏容器内部端口
         sudo sed -i "s/- ${default_port}:/- ${custom_port}:/g" "${dest_file}" 2>/dev/null || true
         sudo sed -i "s/'${default_port}:/'${custom_port}:/g" "${dest_file}" 2>/dev/null || true
         sudo sed -i "s/\"${default_port}:/\"${custom_port}:/g" "${dest_file}" 2>/dev/null || true
+        sudo sed -i "s|localhost:${default_port}|localhost:${custom_port}|g" "${dest_file}" 2>/dev/null || true
         # 替换时区
         sudo sed -i "s|Asia/Shanghai|${custom_tz}|g" "${dest_file}" 2>/dev/null || true
         sudo sed -i "s|TZ=.*|TZ=${custom_tz}|g" "${dest_file}" 2>/dev/null || true
     fi
-    
+
+    harden_preset_secrets "$project_name" "$dest_file"
+
     log_info "启动项目中..."
     if (cd "$project_dir" && sudo docker compose up -d); then
         echo ""
@@ -3365,6 +3690,19 @@ deploy_preset_project() {
 show_post_install_message() {
     local project_name="$1"
     echo ""
+    if [[ ${#GENERATED_CREDENTIALS[@]} -gt 0 ]]; then
+        echo -e "  ${YELLOW}╭───────────────────────────────────────╮${NC}"
+        echo -e "  ${YELLOW}│${NC}  ${WHITE}${BOLD}已自动生成随机凭据${NC}                  ${YELLOW}│${NC}"
+        echo -e "  ${YELLOW}├───────────────────────────────────────┤${NC}"
+        local item
+        for item in "${GENERATED_CREDENTIALS[@]}"; do
+            echo -e "  ${YELLOW}│${NC}  ${CYAN}${item}${NC}"
+        done
+        echo -e "  ${YELLOW}╰───────────────────────────────────────╯${NC}"
+        echo -e "  ${YELLOW}提示: 这些凭据只显示一次，已写入 docker-compose.yml。${NC}"
+        GENERATED_CREDENTIALS=()
+        return
+    fi
     case $project_name in
         "qbittorrent")
             echo -e "  ${YELLOW}╭───────────────────────────────────────╮${NC}"
@@ -3435,7 +3773,7 @@ show_preset_deployment_menu() {
         draw_footer 50
         echo ""
         read -p "$(echo -e ${CYAN}请选择要部署的项目${NC} [0-18]: )" preset_choice </dev/tty
-        
+
         local project_to_deploy=""
         case $preset_choice in
             1) project_to_deploy="homepage" ;;
@@ -3461,8 +3799,9 @@ show_preset_deployment_menu() {
         esac
 
         if [[ -n "$project_to_deploy" ]]; then
-            deploy_preset_project "$project_to_deploy"
-            show_post_install_message "$project_to_deploy"
+            if deploy_preset_project "$project_to_deploy"; then
+                show_post_install_message "$project_to_deploy"
+            fi
             press_any_key
         fi
     done
@@ -3478,47 +3817,58 @@ deploy_from_github() {
     echo -e "  • github.com/owner/repo"
     echo -e "  • owner/repo"
     echo ""
-    
+
     read -p "请输入 GitHub 仓库地址: " repo_url </dev/tty
     [[ -z "$repo_url" ]] && return 0
-    
+
     # 解析仓库信息
     local owner repo
     repo_url="${repo_url#https://}"
     repo_url="${repo_url#http://}"
     repo_url="${repo_url#github.com/}"
-    
+
     owner=$(echo "$repo_url" | cut -d'/' -f1)
     repo=$(echo "$repo_url" | cut -d'/' -f2)
-    
-    if [[ -z "$owner" || -z "$repo" ]]; then
+    repo="${repo%.git}"
+
+    if [[ -z "$owner" || -z "$repo" ]] || [[ ! "$owner" =~ ^[A-Za-z0-9_.-]+$ ]] || [[ ! "$repo" =~ ^[A-Za-z0-9_.-]+$ ]]; then
         log_error "无法解析仓库地址！"
         return 1
     fi
-    
+
     echo ""
     log_info "仓库: ${owner}/${repo}"
-    
+
     # 检查 Docker
-    if ! command -v docker &>/dev/null || ! docker compose version &>/dev/null; then 
+    if ! command -v docker &>/dev/null || ! docker compose version &>/dev/null; then
         log_error "Docker 或 Compose 未安装。"
         return 1
     fi
-    
+
     # 输入安装目录
     local default_dir="/opt/${repo}"
     read -p "安装目录 [${default_dir}]: " project_dir </dev/tty
     [[ -z "$project_dir" ]] && project_dir="$default_dir"
-    
+
+    if ! is_safe_project_dir "$project_dir"; then
+        log_error "安装目录不安全，请使用类似 /opt/${repo} 的独立目录。"
+        return 1
+    fi
+
     local dest_file="${project_dir}/docker-compose.yml"
-    
+    local project_dir_created=0
+    [[ ! -e "$project_dir" ]] && project_dir_created=1
+
     # 尝试下载 docker-compose 文件
     log_info "正在从仓库下载配置文件..."
-    sudo mkdir -p "$project_dir"
-    
+    if ! sudo mkdir -p "$project_dir"; then
+        log_error "创建项目目录失败，请检查路径和权限。"
+        return 1
+    fi
+
     local raw_base="https://raw.githubusercontent.com/${owner}/${repo}/main"
     local downloaded=0
-    
+
     # 尝试多个可能的路径
     for path in "docker-compose.yml" "docker-compose.yaml" "compose.yml" "compose.yaml"; do
         if sudo curl -sLf -o "${dest_file}" "${raw_base}/${path}" 2>/dev/null; then
@@ -3527,7 +3877,7 @@ deploy_from_github() {
             break
         fi
     done
-    
+
     # 尝试 master 分支
     if [[ $downloaded -eq 0 ]]; then
         raw_base="https://raw.githubusercontent.com/${owner}/${repo}/master"
@@ -3539,39 +3889,37 @@ deploy_from_github() {
             fi
         done
     fi
-    
+
     if [[ $downloaded -eq 0 ]]; then
         log_error "未找到 docker-compose 配置文件！"
         log_warning "请确认仓库根目录存在 docker-compose.yml 或 compose.yml"
-        sudo rm -rf "$project_dir"
+        cleanup_failed_project_dir "$project_dir" "$dest_file" "$project_dir_created"
         return 1
     fi
-    
+
     echo ""
     echo -e "  ${WHITE}${BOLD}部署信息${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
     echo -e "  仓库:     ${CYAN}${owner}/${repo}${NC}"
     echo -e "  安装目录: ${CYAN}${project_dir}${NC}"
     echo ""
-    
+
     read -p "确认部署? (y/n): " confirm </dev/tty
-    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then 
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
         log_info "操作已取消。"
-        sudo rm -rf "$project_dir"
+        cleanup_failed_project_dir "$project_dir" "$dest_file" "$project_dir_created"
         return 0
     fi
-    
+
     log_info "启动项目中..."
-    cd "$project_dir" || return 1
-    sudo docker compose up -d
-    if [[ $? -eq 0 ]]; then 
+    if (cd "$project_dir" && sudo docker compose up -d); then
         echo ""
         log_success "项目 '${repo}' 已成功部署！"
         echo ""
         echo -e "  ${WHITE}${BOLD}项目目录${NC}"
         echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
         echo -e "  ${project_dir}"
-    else 
+    else
         log_error "项目部署失败！"
         return 1
     fi
@@ -3601,6 +3949,198 @@ show_deployment_menu() {
 }
 
 # ================== 系统工具菜单 ==================
+print_diag_item() {
+    local status="$1"
+    local name="$2"
+    local detail="$3"
+
+    case "$status" in
+        ok) echo -e "  ${GREEN}✓${NC} ${name}: ${detail}" ;;
+        warn) echo -e "  ${YELLOW}⚠${NC} ${name}: ${detail}" ;;
+        fail) echo -e "  ${RED}✗${NC} ${name}: ${detail}" ;;
+        *) echo -e "  ${GRAY}-${NC} ${name}: ${detail}" ;;
+    esac
+}
+
+show_system_diagnostics() {
+    clear
+    draw_title_line "系统自检诊断" 50
+    echo ""
+
+    echo -e "  ${WHITE}${BOLD}基础信息${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    print_diag_item ok "主机名" "$(hostname 2>/dev/null || echo unknown)"
+    print_diag_item ok "内核" "$(uname -srmo 2>/dev/null || uname -a)"
+    if [[ -f /etc/os-release ]]; then
+        local os_name
+        os_name=$(grep -E '^PRETTY_NAME=' /etc/os-release | cut -d= -f2- | tr -d '"' 2>/dev/null)
+        print_diag_item ok "系统" "${os_name:-unknown}"
+    fi
+    print_diag_item ok "包管理器" "$(detect_pkg_manager)"
+    echo ""
+
+    echo -e "  ${WHITE}${BOLD}关键依赖${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    local cmd
+    for cmd in curl sudo awk sed grep systemctl; do
+        if command -v "$cmd" &>/dev/null; then
+            print_diag_item ok "$cmd" "$(command -v "$cmd")"
+        else
+            print_diag_item fail "$cmd" "未安装"
+        fi
+    done
+    for cmd in jq bc dig ss; do
+        if command -v "$cmd" &>/dev/null; then
+            print_diag_item ok "$cmd" "$(command -v "$cmd")"
+        else
+            print_diag_item warn "$cmd" "未安装，部分功能可能受限"
+        fi
+    done
+    echo ""
+
+    echo -e "  ${WHITE}${BOLD}Docker 状态${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    if command -v docker &>/dev/null; then
+        print_diag_item ok "docker" "$(docker --version 2>/dev/null | head -1)"
+        if docker compose version &>/dev/null; then
+            print_diag_item ok "compose" "$(docker compose version 2>/dev/null | head -1)"
+        else
+            print_diag_item warn "compose" "Docker Compose 插件不可用"
+        fi
+        if systemctl is-active --quiet docker 2>/dev/null; then
+            print_diag_item ok "docker 服务" "运行中"
+        else
+            print_diag_item warn "docker 服务" "未运行或非 systemd 环境"
+        fi
+    else
+        print_diag_item warn "docker" "未安装"
+    fi
+    echo ""
+
+    echo -e "  ${WHITE}${BOLD}网络连通性${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    local public_ipv4
+    public_ipv4=$(get_public_ipv4)
+    if [[ -n "$public_ipv4" ]]; then
+        print_diag_item ok "公网 IPv4" "$public_ipv4"
+    else
+        print_diag_item warn "公网 IPv4" "获取失败"
+    fi
+    if curl -fsSL --max-time 5 "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/fishtools.sh" -o /dev/null 2>/dev/null; then
+        print_diag_item ok "GitHub Raw" "可访问"
+    else
+        print_diag_item warn "GitHub Raw" "访问失败，更新/预设/Gost 自动补齐可能受影响"
+    fi
+    echo ""
+
+    echo -e "  ${WHITE}${BOLD}磁盘与 inode${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    df -h / 2>/dev/null | awk 'NR==1{print "  "$0} NR==2{print "  "$0}'
+    df -ih / 2>/dev/null | awk 'NR==1{print "  "$0} NR==2{print "  "$0}'
+    echo ""
+
+    echo -e "  ${WHITE}${BOLD}常用端口占用${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    local port
+    for port in 22 53 80 443 3000 3001 8080 8081 8443; do
+        if is_port_in_use "$port"; then
+            print_diag_item warn "端口 ${port}" "已占用"
+        else
+            print_diag_item ok "端口 ${port}" "空闲"
+        fi
+    done
+    echo ""
+    press_any_key
+}
+
+show_config_backup_menu() {
+    local backup_dir="/var/backups/fishtools"
+
+    clear
+    draw_title_line "配置备份恢复" 50
+    echo ""
+
+    if [[ ! -d "$backup_dir" ]]; then
+        log_warning "暂无备份目录: $backup_dir"
+        press_any_key
+        return
+    fi
+
+    local backups=()
+    local backup_file
+    while IFS= read -r backup_file; do
+        backups+=("$backup_file")
+    done < <(ls -1t "$backup_dir"/*.bak 2>/dev/null)
+
+    if [[ ${#backups[@]} -eq 0 ]]; then
+        log_warning "暂无可恢复的配置备份"
+        press_any_key
+        return
+    fi
+
+    echo -e "  ${WHITE}${BOLD}最近备份${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    local i original_path display_count
+    display_count=${#backups[@]}
+    [[ $display_count -gt 20 ]] && display_count=20
+
+    for ((i=0; i<display_count; i++)); do
+        original_path="未知原路径"
+        [[ -f "${backups[$i]}.path" ]] && original_path=$(cat "${backups[$i]}.path" 2>/dev/null)
+        echo -e "  ${CYAN}$((i + 1)).${NC} ${original_path}"
+        echo -e "      ${DIM}$(basename "${backups[$i]}")${NC}"
+    done
+
+    echo ""
+    read -p "请选择要恢复的备份 [1-${display_count}]，或回车取消: " backup_choice </dev/tty
+    [[ -z "$backup_choice" ]] && return 0
+
+    if [[ ! "$backup_choice" =~ ^[0-9]+$ ]] || [[ "$backup_choice" -lt 1 ]] || [[ "$backup_choice" -gt "$display_count" ]]; then
+        log_error "无效选择"
+        press_any_key
+        return 1
+    fi
+
+    local selected_backup="${backups[$((backup_choice - 1))]}"
+    local restore_path=""
+    [[ -f "${selected_backup}.path" ]] && restore_path=$(cat "${selected_backup}.path" 2>/dev/null)
+    if [[ -z "$restore_path" || "$restore_path" == "未知原路径" ]]; then
+        read -p "无法识别原路径，请输入恢复目标路径: " restore_path </dev/tty
+    fi
+
+    if [[ -z "$restore_path" || "$restore_path" != /* ]]; then
+        log_error "恢复目标路径无效"
+        press_any_key
+        return 1
+    fi
+
+    echo ""
+    echo -e "  备份文件: ${CYAN}${selected_backup}${NC}"
+    echo -e "  恢复到:   ${CYAN}${restore_path}${NC}"
+    echo ""
+    read -p "确认恢复? (y/n): " confirm_restore </dev/tty
+    if [[ "$confirm_restore" != "y" && "$confirm_restore" != "Y" ]]; then
+        log_info "操作已取消"
+        press_any_key
+        return 0
+    fi
+
+    if [[ -e "$restore_path" ]]; then
+        backup_config_file "$restore_path" >/dev/null || {
+            log_error "恢复前备份当前配置失败，已取消恢复"
+            press_any_key
+            return 1
+        }
+    fi
+
+    if sudo cp -a "$selected_backup" "$restore_path"; then
+        log_success "配置已恢复: $restore_path"
+    else
+        log_error "恢复失败，请检查权限和路径"
+    fi
+    press_any_key
+}
+
 show_system_tools_menu() {
     while true; do
         clear
@@ -3615,31 +4155,33 @@ show_system_tools_menu() {
         draw_menu_item "7" "📦" "系统包一键更新"
         draw_menu_item "8" "📋" "系统日志查看"
         draw_menu_item "9" "📊" "流量统计 (vnstat)"
+        draw_menu_item "10" "🩺" "系统自检诊断"
+        draw_menu_item "11" "♻️" "配置备份恢复"
         echo ""
         draw_separator 50
         draw_menu_item "0" "🔙" "返回主菜单"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-9]: )" tools_choice </dev/tty
-        
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-11]: )" tools_choice </dev/tty
+
         case $tools_choice in
             1)
                 clear
                 draw_title_line "磁盘清理" 50
                 echo ""
-                
+
                 # 显示当前磁盘使用情况
                 echo -e "  ${WHITE}${BOLD}当前磁盘使用情况${NC}"
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
                 df -h / | awk 'NR==1{print "  "$0} NR==2{print "  "$0}'
                 echo ""
-                
+
                 # 计算可清理空间
                 local apt_cache=$(du -sh /var/cache/apt/archives 2>/dev/null | awk '{print $1}' || echo "0")
                 local journal=$(du -sh /var/log/journal 2>/dev/null | awk '{print $1}' || echo "0")
                 local tmp_size=$(du -sh /tmp 2>/dev/null | awk '{print $1}' || echo "0")
                 local old_kernels=$(dpkg -l 'linux-*' 2>/dev/null | grep -E '^ii' | wc -l)
-                
+
                 echo -e "  ${WHITE}${BOLD}可清理项目${NC}"
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
                 echo -e "  ${CYAN}1.${NC} APT 缓存            约 ${apt_cache}"
@@ -3648,10 +4190,10 @@ show_system_tools_menu() {
                 echo -e "  ${CYAN}4.${NC} 旧内核 (保留当前)   ${old_kernels} 个包"
                 echo -e "  ${CYAN}5.${NC} 一键清理全部"
                 echo ""
-                
+
                 read -p "请选择要清理的项目 [1-5]: " clean_opt </dev/tty
                 echo ""
-                
+
                 case $clean_opt in
                     1)
                         log_info "清理包管理器缓存..."
@@ -3670,8 +4212,8 @@ show_system_tools_menu() {
                         ;;
                     3)
                         log_info "清理临时文件..."
-                        sudo rm -rf /tmp/* 2>/dev/null || true
-                        log_success "临时文件已清理"
+                        safe_clean_tmp_files
+                        log_success "临时文件已清理（保留近 60 分钟和系统 socket）"
                         ;;
                     4)
                         log_info "清理旧内核..."
@@ -3692,12 +4234,12 @@ show_system_tools_menu() {
                             yum) sudo yum clean all; sudo yum autoremove -y 2>/dev/null || true ;;
                         esac
                         sudo journalctl --vacuum-time=7d 2>/dev/null || true
-                        sudo rm -rf /tmp/* 2>/dev/null || true
-                        rm -rf ~/.cache/* 2>/dev/null || true
+                        safe_clean_tmp_files
+                        safe_clean_user_cache
                         log_success "全部清理完成！"
                         ;;
                 esac
-                
+
                 echo ""
                 echo -e "  ${WHITE}${BOLD}清理后磁盘使用${NC}"
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
@@ -3723,7 +4265,7 @@ show_system_tools_menu() {
                 echo -e "  ${CYAN}8.${NC} 自定义输入"
                 echo ""
                 read -p "请选择时区 [1-8]: " tz_choice </dev/tty
-                
+
                 local new_tz=""
                 case $tz_choice in
                     1) new_tz="Asia/Shanghai" ;;
@@ -3737,7 +4279,7 @@ show_system_tools_menu() {
                         read -p "请输入时区 (如 Asia/Shanghai): " new_tz </dev/tty
                         ;;
                 esac
-                
+
                 if [[ -n "$new_tz" ]]; then
                     sudo timedatectl set-timezone "$new_tz" 2>/dev/null || \
                     sudo ln -sf "/usr/share/zoneinfo/$new_tz" /etc/localtime
@@ -3755,7 +4297,7 @@ show_system_tools_menu() {
                 echo -e "  $(hostname)"
                 echo ""
                 read -p "请输入新主机名: " new_hostname </dev/tty
-                
+
                 if [[ -n "$new_hostname" ]]; then
                     # 校验主机名格式 (RFC 1123)
                     if [[ ! "$new_hostname" =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$ ]]; then
@@ -3778,7 +4320,7 @@ show_system_tools_menu() {
                 echo ""
                 local current_port=$(grep -E "^Port" /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' || echo "22")
                 [[ -z "$current_port" ]] && current_port="22"
-                
+
                 echo -e "  ${WHITE}${BOLD}当前 SSH 端口${NC}"
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
                 echo -e "  ${current_port}"
@@ -3786,11 +4328,22 @@ show_system_tools_menu() {
                 echo -e "  ${YELLOW}⚠ 警告：修改端口前请确保新端口已在防火墙中开放！${NC}"
                 echo ""
                 read -p "请输入新 SSH 端口 (1024-65535): " new_port </dev/tty
-                
+
                 if [[ "$new_port" =~ ^[0-9]+$ ]] && [[ "$new_port" -ge 1024 ]] && [[ "$new_port" -le 65535 ]]; then
+                    if [[ "$new_port" != "$current_port" ]] && is_port_in_use "$new_port"; then
+                        log_error "端口 $new_port 已被占用，请选择其他端口。"
+                        press_any_key
+                        continue
+                    fi
+
                     # 备份配置
-                    sudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak.$(date +%Y%m%d%H%M%S)
-                    
+                    local backup_file
+                    if ! backup_file=$(backup_config_file /etc/ssh/sshd_config); then
+                        log_error "备份 SSH 配置失败，已取消操作。"
+                        press_any_key
+                        continue
+                    fi
+
                     # 修改端口
                     if grep -q "^Port" /etc/ssh/sshd_config; then
                         sudo sed -i "s/^Port.*/Port $new_port/" /etc/ssh/sshd_config
@@ -3799,7 +4352,14 @@ show_system_tools_menu() {
                     else
                         echo "Port $new_port" | sudo tee -a /etc/ssh/sshd_config >/dev/null
                     fi
-                    
+
+                    if ! test_sshd_config; then
+                        sudo cp "$backup_file" /etc/ssh/sshd_config
+                        log_error "SSH 配置语法检查失败，已恢复原配置。"
+                        press_any_key
+                        continue
+                    fi
+
                     # 尝试在防火墙中开放新端口
                     if command -v ufw &>/dev/null; then
                         sudo ufw allow "$new_port"/tcp 2>/dev/null || true
@@ -3815,7 +4375,7 @@ show_system_tools_menu() {
                         sudo systemctl restart fail2ban 2>/dev/null || true
                         log_info "fail2ban 已同步更新到端口 $new_port"
                     fi
-                    
+
                     log_success "SSH 端口已修改为: $new_port"
                     echo ""
                     echo -e "  ${RED}${BOLD}重要提示：${NC}"
@@ -3825,8 +4385,11 @@ show_system_tools_menu() {
                     echo ""
                     read -p "是否立即重启 SSH 服务? (y/n): " restart_ssh </dev/tty
                     if [[ "$restart_ssh" == "y" || "$restart_ssh" == "Y" ]]; then
-                        sudo systemctl restart sshd 2>/dev/null || sudo service ssh restart
-                        log_success "SSH 服务已重启"
+                        if sudo systemctl restart sshd 2>/dev/null || sudo service ssh restart; then
+                            log_success "SSH 服务已重启"
+                        else
+                            log_error "SSH 服务重启失败，请检查服务名称和配置。"
+                        fi
                     fi
                 else
                     log_error "无效端口号！请输入 1024-65535 之间的数字"
@@ -3846,7 +4409,7 @@ show_system_tools_menu() {
                 draw_menu_item "3" "🗑️" "清空所有任务"
                 echo ""
                 read -p "请选择操作 [1-3]: " cron_opt </dev/tty
-                
+
                 case $cron_opt in
                     1)
                         echo ""
@@ -3885,7 +4448,7 @@ show_system_tools_menu() {
                 echo -e "  ${CYAN}3.${NC} 定时重启 (分钟后)"
                 echo ""
                 read -p "请选择操作 [1-3]: " power_opt </dev/tty
-                
+
                 case $power_opt in
                     1)
                         read -p "确认立即重启? (y/n): " confirm </dev/tty
@@ -4040,6 +4603,12 @@ show_system_tools_menu() {
                 esac
                 press_any_key
                 ;;
+            10)
+                show_system_diagnostics
+                ;;
+            11)
+                show_config_backup_menu
+                ;;
             0)
                 break
                 ;;
@@ -4056,35 +4625,18 @@ show_system_tools_menu() {
 # Gost 主菜单
 show_gost_menu() {
     # 检查并加载 gost 管理脚本
-    local gost_script_loaded=0
-    local script_paths=(
-        "${SCRIPT_PATH%/*}/scripts/gost_manager.sh"
-        "$(dirname "$SCRIPT_PATH")/scripts/gost_manager.sh"
-        "/opt/fishtools/scripts/gost_manager.sh"
-        "./scripts/gost_manager.sh"
-    )
-    
-    for script_path in "${script_paths[@]}"; do
-        if [[ -f "$script_path" ]] && source "$script_path" 2>/dev/null; then
-            gost_script_loaded=1
-            break
-        fi
-    done
-    
-    if [[ $gost_script_loaded -eq 0 ]]; then
+    if ! source_repo_script "gost_manager.sh" "init_gost_manager"; then
         clear
         draw_title_line "Gost 隧道管理" 50
         echo ""
         log_error "无法加载 gost_manager.sh 脚本"
         echo ""
-        echo -e "  ${DIM}尝试的路径：${NC}"
-        for script_path in "${script_paths[@]}"; do
-            echo -e "  ${DIM}- $script_path${NC}"
-        done
+        echo -e "  ${DIM}已尝试本地 scripts/ 目录和 GitHub 自动下载。${NC}"
+        echo -e "  ${DIM}请检查网络连通性，或确认 scripts/gost_manager.sh 存在。${NC}"
         press_any_key
         return 1
     fi
-    
+
     # 检查 jq 是否安装
     if ! command -v jq &> /dev/null; then
         clear
@@ -4093,7 +4645,7 @@ show_gost_menu() {
         log_error "缺少必要依赖 jq，正在尝试安装..."
         echo ""
         pkg_update && pkg_install jq
-        
+
         if ! command -v jq &> /dev/null; then
             log_error "jq 安装失败，无法使用 Gost 管理功能"
             press_any_key
@@ -4101,15 +4653,15 @@ show_gost_menu() {
         fi
         log_success "jq 安装成功"
     fi
-    
+
     # 初始化 gost 管理器
     init_gost_manager
-    
+
     while true; do
         clear
         draw_title_line "Gost 隧道管理" 50
         echo ""
-        
+
         echo -e "  ${WHITE}${BOLD}本地配置模式（推荐）${NC}"
         draw_menu_item "1" "🎯" "配置本机为落地鸡"
         draw_menu_item "2" "🚀" "配置本机为线路鸡"
@@ -4117,17 +4669,17 @@ show_gost_menu() {
         draw_menu_item "4" "▶️" "启动/停止服务"
         draw_menu_item "5" "🗑️" "清除本机配置"
         echo ""
-        
+
         echo -e "  ${WHITE}${BOLD}中心化管理模式（高级）${NC}"
         draw_menu_item "6" "🔧" "节点管理与配置生成"
         echo ""
-        
+
         draw_separator 50
         draw_menu_item "0" "🔙" "返回主菜单"
         draw_footer 50
         echo ""
         read -p "$(echo -e ${CYAN}请输入选择${NC} [0-6]: )" gost_choice </dev/tty
-        
+
         case $gost_choice in
             1) configure_local_target ;;
             2) configure_local_relay ;;
@@ -4145,11 +4697,11 @@ show_gost_menu() {
 configure_local_target() {
     # 加载本地配置脚本
     source_local_script || return 1
-    
+
     clear
     draw_title_line "配置本机为落地鸡" 50
     echo ""
-    
+
     # 检查并安装 gost
     if ! check_gost_installed; then
         log_info "gost 未安装，正在安装..."
@@ -4159,17 +4711,27 @@ configure_local_target() {
             return 1
         fi
     fi
-    
+
     echo -e "  ${WHITE}${BOLD}落地鸡配置${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
     echo ""
-    
+
     read -p "TLS 监听端口 [8443]: " tls_port </dev/tty
     tls_port=${tls_port:-8443}
-    
+    if ! is_valid_port "$tls_port"; then
+        log_error "TLS 端口无效，请输入 1-65535 之间的数字。"
+        press_any_key
+        return 1
+    fi
+    if ! confirm_port_available "$tls_port" "TLS 监听端口"; then
+        log_info "操作已取消"
+        press_any_key
+        return 0
+    fi
+
     read -p "转发目标 [127.0.0.1:80]: " forward_target </dev/tty
     forward_target=${forward_target:-127.0.0.1:80}
-    
+
     echo ""
     echo -e "  ${WHITE}${BOLD}配置摘要${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
@@ -4177,17 +4739,17 @@ configure_local_target() {
     echo -e "  TLS 端口: ${CYAN}${tls_port}${NC}"
     echo -e "  转发目标: ${CYAN}${forward_target}${NC}"
     echo ""
-    
+
     read -p "确认配置并启动服务? (y/n): " confirm </dev/tty
     if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
         log_info "操作已取消"
         press_any_key
         return 0
     fi
-    
+
     # 保存配置
     configure_as_target "$tls_port" "$forward_target"
-    
+
     # 启动服务
     log_info "正在启动 gost 服务..."
     if start_gost_service; then
@@ -4204,7 +4766,7 @@ configure_local_target() {
     else
         log_error "服务启动失败"
     fi
-    
+
     press_any_key
 }
 
@@ -4212,12 +4774,12 @@ configure_local_target() {
 configure_local_relay() {
     # 加载本地配置脚本
     source_local_script || return 1
-    
+
     while true; do
         clear
         draw_title_line "配置本机为线路鸡" 50
         echo ""
-        
+
         # 检查并安装 gost
         if ! check_gost_installed; then
             log_info "gost 未安装，正在安装..."
@@ -4227,20 +4789,20 @@ configure_local_relay() {
                 return 1
             fi
         fi
-        
+
         # 显示现有转发规则
         echo -e "  ${WHITE}${BOLD}当前转发规则${NC}"
         echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
-        
+
         local config=$(load_local_config)
         local count=$(echo "$config" | jq '.relay.forwards | length')
-        
+
         if [[ "$count" -eq 0 ]]; then
             echo -e "  ${DIM}暂无转发规则${NC}"
         else
             echo "$config" | jq -r '.relay.forwards[] | "  [\(.listen_port)] → \(.name) (\(.target_ip):\(.target_port))"'
         fi
-        
+
         echo ""
         draw_menu_item "1" "➕" "添加转发规则"
         draw_menu_item "2" "🗑️" "删除转发规则"
@@ -4251,26 +4813,41 @@ configure_local_relay() {
         draw_footer 50
         echo ""
         read -p "$(echo -e ${CYAN}请输入选择${NC} [0-3]: )" relay_choice </dev/tty
-        
+
         case $relay_choice in
             1)
                 clear
                 draw_title_line "添加转发规则" 50
                 echo ""
-                
+
                 read -p "落地鸡名称 (如: 美国落地): " name </dev/tty
                 [[ -z "$name" ]] && { log_warning "操作已取消"; press_any_key; continue; }
-                
+
                 read -p "落地鸡 IP: " target_ip </dev/tty
                 [[ -z "$target_ip" ]] && { log_warning "操作已取消"; press_any_key; continue; }
-                
+
                 read -p "落地鸡 TLS 端口 [8443]: " target_port </dev/tty
                 target_port=${target_port:-8443}
-                
+                if ! is_valid_port "$target_port"; then
+                    log_error "TLS 端口无效，请输入 1-65535 之间的数字。"
+                    press_any_key
+                    continue
+                fi
+
                 local next_port=$(get_next_listen_port)
                 read -p "本地监听端口 [${next_port}]: " listen_port </dev/tty
                 listen_port=${listen_port:-$next_port}
-                
+                if ! is_valid_port "$listen_port"; then
+                    log_error "本地监听端口无效，请输入 1-65535 之间的数字。"
+                    press_any_key
+                    continue
+                fi
+                if ! confirm_port_available "$listen_port" "本地监听端口"; then
+                    log_info "操作已取消"
+                    press_any_key
+                    continue
+                fi
+
                 echo ""
                 log_info "正在添加转发规则..."
                 if add_relay_forward "$name" "$target_ip" "$target_port" "$listen_port"; then
@@ -4288,17 +4865,17 @@ configure_local_relay() {
                     press_any_key
                     continue
                 fi
-                
+
                 clear
                 draw_title_line "删除转发规则" 50
                 echo ""
-                
+
                 echo "$config" | jq -r '.relay.forwards[] | "  [\(.listen_port)] → \(.name)"'
                 echo ""
-                
+
                 read -p "请输入要删除的监听端口: " del_port </dev/tty
                 [[ -z "$del_port" ]] && { log_warning "操作已取消"; press_any_key; continue; }
-                
+
                 remove_relay_forward "$del_port"
                 log_success "转发规则已删除"
                 echo ""
@@ -4313,7 +4890,7 @@ configure_local_relay() {
                     echo ""
                     echo -e "  ${WHITE}${BOLD}访问方式${NC}"
                     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
-                    
+
                     config=$(load_local_config)
                     echo "$config" | jq -r '.relay.forwards[] | "  http://本机IP:\(.listen_port) → \(.name)"'
                 else
@@ -4329,20 +4906,10 @@ configure_local_relay() {
 
 # 加载本地配置脚本
 source_local_script() {
-    local script_paths=(
-        "${SCRIPT_PATH%/*}/scripts/gost_local.sh"
-        "$(dirname "$SCRIPT_PATH")/scripts/gost_local.sh"
-        "/opt/fishtools/scripts/gost_local.sh"
-        "./scripts/gost_local.sh"
-    )
-    
-    for script_path in "${script_paths[@]}"; do
-        if [[ -f "$script_path" ]] && source "$script_path" 2>/dev/null; then
-            return 0
-        fi
-    done
-    
+    source_repo_script "gost_local.sh" "load_local_config" && return 0
+
     log_error "无法加载 gost_local.sh 脚本"
+    echo -e "  ${DIM}已尝试本地 scripts/ 目录和 GitHub 自动下载。${NC}"
     press_any_key
     return 1
 }
@@ -4350,16 +4917,16 @@ source_local_script() {
 # 查看本机配置
 show_local_gost_config() {
     source_local_script || return 1
-    
+
     clear
     draw_title_line "本机 Gost 配置" 50
     echo ""
-    
+
     echo -e "  ${WHITE}${BOLD}配置信息${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
     get_local_config_summary
     echo ""
-    
+
     echo -e "  ${WHITE}${BOLD}服务状态${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
     local status=$(get_gost_service_status)
@@ -4368,7 +4935,7 @@ show_local_gost_config() {
     else
         echo -e "  ${RED}○ 已停止${NC}"
     fi
-    
+
     echo ""
     press_any_key
 }
@@ -4376,13 +4943,13 @@ show_local_gost_config() {
 # 管理本地服务
 manage_local_gost_service() {
     source_local_script || return 1
-    
+
     clear
     draw_title_line "Gost 服务管理" 50
     echo ""
-    
+
     local status=$(get_gost_service_status)
-    
+
     echo -e "  ${WHITE}${BOLD}当前状态${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
     if [[ "$status" == "running" ]]; then
@@ -4391,7 +4958,7 @@ manage_local_gost_service() {
         echo -e "  ${RED}○ 已停止${NC}"
     fi
     echo ""
-    
+
     if [[ "$status" == "running" ]]; then
         draw_menu_item "1" "⏹️" "停止服务"
         draw_menu_item "2" "🔄" "重启服务"
@@ -4405,7 +4972,7 @@ manage_local_gost_service() {
     draw_footer 50
     echo ""
     read -p "$(echo -e ${CYAN}请输入选择${NC}): " service_choice </dev/tty
-    
+
     case $service_choice in
         1)
             if [[ "$status" == "running" ]]; then
@@ -4440,30 +5007,30 @@ manage_local_gost_service() {
 # 清除本机配置
 clear_local_gost_config() {
     source_local_script || return 1
-    
+
     clear
     draw_title_line "清除本机配置" 50
     echo ""
-    
+
     echo -e "  ${RED}${BOLD}⚠ 警告：此操作将删除所有本地配置！${NC}"
     echo ""
-    
+
     read -p "确认清除? 请输入 'yes' 确认: " confirm </dev/tty
-    
+
     if [[ "$confirm" == "yes" ]]; then
         # 停止服务
         stop_gost_service 2>/dev/null
-        
+
         # 删除配置文件
         sudo rm -f "$LOCAL_GOST_CONFIG"
         sudo rm -f "$GOST_SERVICE_FILE"
         sudo systemctl daemon-reload
-        
+
         log_success "本地配置已清除"
     else
         log_info "操作已取消"
     fi
-    
+
     press_any_key
 }
 
@@ -4473,7 +5040,7 @@ show_centralized_menu() {
         clear
         draw_title_line "中心化管理模式" 50
         echo ""
-        
+
         # 显示统计信息
         local relay_count=$(count_relay_nodes 2>/dev/null || echo "0")
         local target_count=$(count_target_nodes 2>/dev/null || echo "0")
@@ -4482,7 +5049,7 @@ show_centralized_menu() {
         echo -e "  线路鸡: ${CYAN}${relay_count}${NC} 个"
         echo -e "  落地鸡: ${CYAN}${target_count}${NC} 个"
         echo ""
-        
+
         draw_menu_item "1" "🚀" "线路鸡（中转节点）管理"
         draw_menu_item "2" "🎯" "落地鸡（目标节点）管理"
         draw_menu_item "3" "🔗" "配置节点关联"
@@ -4495,7 +5062,7 @@ show_centralized_menu() {
         draw_footer 50
         echo ""
         read -p "$(echo -e ${CYAN}请输入选择${NC} [0-6]: )" gost_choice </dev/tty
-        
+
         case $gost_choice in
             1) show_relay_nodes_menu ;;
             2) show_target_nodes_menu ;;
@@ -4515,20 +5082,20 @@ show_relay_nodes_menu() {
         clear
         draw_title_line "线路鸡管理" 50
         echo ""
-        
+
         # 显示现有线路鸡列表
         echo -e "  ${WHITE}${BOLD}现有线路鸡节点${NC}"
         echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
-        
+
         local config=$(load_gost_config)
         local relay_count=$(echo "$config" | jq '.relay_nodes | length')
-        
+
         if [[ "$relay_count" -eq 0 ]]; then
             echo -e "  ${DIM}暂无线路鸡节点${NC}"
         else
             echo "$config" | jq -r '.relay_nodes[] | "  [\(.id)] \(.name) - \(.ip) (关联: \(.targets | length)个目标)"'
         fi
-        
+
         echo ""
         draw_menu_item "1" "➕" "添加线路鸡节点"
         draw_menu_item "2" "🗑️" "删除线路鸡节点"
@@ -4538,25 +5105,25 @@ show_relay_nodes_menu() {
         draw_footer 50
         echo ""
         read -p "$(echo -e ${CYAN}请输入选择${NC} [0-2]: )" relay_choice </dev/tty
-        
+
         case $relay_choice in
             1)
                 clear
                 draw_title_line "添加线路鸡节点" 50
                 echo ""
-                
+
                 read -p "节点名称 (如: 香港中转): " node_name </dev/tty
                 [[ -z "$node_name" ]] && { log_warning "操作已取消"; press_any_key; continue; }
-                
+
                 read -p "节点 IP 地址: " node_ip </dev/tty
                 [[ -z "$node_ip" ]] && { log_warning "操作已取消"; press_any_key; continue; }
-                
+
                 echo ""
                 echo -e "  ${YELLOW}提示：线路鸡使用 TLS 转发模式，不需要 SSH 访问${NC}"
                 echo ""
                 log_info "正在添加线路鸡节点..."
                 local new_id=$(add_relay_node "$node_name" "$node_ip")
-                
+
                 if [[ $? -eq 0 ]]; then
                     log_success "线路鸡节点已添加！ID: $new_id"
                 else
@@ -4570,19 +5137,19 @@ show_relay_nodes_menu() {
                     press_any_key
                     continue
                 fi
-                
+
                 clear
                 draw_title_line "删除线路鸡节点" 50
                 echo ""
-                
+
                 echo -e "  ${WHITE}${BOLD}现有线路鸡节点${NC}"
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
                 echo "$config" | jq -r '.relay_nodes[] | "  \(.id) - \(.name)"'
                 echo ""
-                
+
                 read -p "请输入要删除的节点ID: " delete_id </dev/tty
                 [[ -z "$delete_id" ]] && { log_warning "操作已取消"; press_any_key; continue; }
-                
+
                 read -p "确认删除节点 $delete_id? (y/n): " confirm </dev/tty
                 if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
                     delete_relay_node "$delete_id"
@@ -4604,20 +5171,20 @@ show_target_nodes_menu() {
         clear
         draw_title_line "落地鸡管理" 50
         echo ""
-        
+
         # 显示现有落地鸡列表
         echo -e "  ${WHITE}${BOLD}现有落地鸡节点${NC}"
         echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
-        
+
         local config=$(load_gost_config)
         local target_count=$(echo "$config" | jq '.target_nodes | length')
-        
+
         if [[ "$target_count" -eq 0 ]]; then
             echo -e "  ${DIM}暂无落地鸡节点${NC}"
         else
             echo "$config" | jq -r '.target_nodes[] | "  [\(.id)] \(.name) - \(.ip):\(.tls_port)"'
         fi
-        
+
         echo ""
         draw_menu_item "1" "➕" "添加落地鸡节点"
         draw_menu_item "2" "🗑️" "删除落地鸡节点"
@@ -4627,31 +5194,31 @@ show_target_nodes_menu() {
         draw_footer 50
         echo ""
         read -p "$(echo -e ${CYAN}请输入选择${NC} [0-2]: )" target_choice </dev/tty
-        
+
         case $target_choice in
             1)
                 clear
                 draw_title_line "添加落地鸡节点" 50
                 echo ""
-                
+
                 read -p "节点名称 (如: 美国落地): " node_name </dev/tty
                 [[ -z "$node_name" ]] && { log_warning "操作已取消"; press_any_key; continue; }
-                
+
                 read -p "节点 IP 地址: " node_ip </dev/tty
                 [[ -z "$node_ip" ]] && { log_warning "操作已取消"; press_any_key; continue; }
-                
+
                 read -p "TLS 监听端口 [8443]: " tls_port </dev/tty
                 tls_port=${tls_port:-8443}
-                
+
                 read -p "转发目标 [127.0.0.1:80]: " forward_target </dev/tty
                 forward_target=${forward_target:-127.0.0.1:80}
-                
+
                 echo ""
                 echo -e "  ${YELLOW}提示：落地鸡需要运行 gost 监听 TLS 端口 $tls_port${NC}"
                 echo ""
                 log_info "正在添加落地鸡节点..."
                 local new_id=$(add_target_node "$node_name" "$node_ip" "$tls_port" "$forward_target")
-                
+
                 if [[ $? -eq 0 ]]; then
                     log_success "落地鸡节点已添加！ID: $new_id"
                     echo ""
@@ -4668,19 +5235,19 @@ show_target_nodes_menu() {
                     press_any_key
                     continue
                 fi
-                
+
                 clear
                 draw_title_line "删除落地鸡节点" 50
                 echo ""
-                
+
                 echo -e "  ${WHITE}${BOLD}现有落地鸡节点${NC}"
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
                 echo "$config" | jq -r '.target_nodes[] | "  \(.id) - \(.name)"'
                 echo ""
-                
+
                 read -p "请输入要删除的节点ID: " delete_id </dev/tty
                 [[ -z "$delete_id" ]] && { log_warning "操作已取消"; press_any_key; continue; }
-                
+
                 echo ""
                 log_warning "删除落地鸡节点将同时移除所有线路鸡的关联"
                 read -p "确认删除节点 $delete_id? (y/n): " confirm </dev/tty
@@ -4704,11 +5271,11 @@ show_link_nodes_menu() {
         clear
         draw_title_line "配置节点关联" 50
         echo ""
-        
+
         local config=$(load_gost_config)
         local relay_count=$(echo "$config" | jq '.relay_nodes | length')
         local target_count=$(echo "$config" | jq '.target_nodes | length')
-        
+
         if [[ "$relay_count" -eq 0 || "$target_count" -eq 0 ]]; then
             echo -e "  ${YELLOW}⚠ 请先添加线路鸡和落地鸡节点${NC}"
             echo ""
@@ -4718,7 +5285,7 @@ show_link_nodes_menu() {
             press_any_key
             break
         fi
-        
+
         draw_menu_item "1" "➕" "添加关联"
         draw_menu_item "2" "🗑️" "删除关联"
         draw_menu_item "3" "📋" "查看关联关系"
@@ -4728,21 +5295,21 @@ show_link_nodes_menu() {
         draw_footer 50
         echo ""
         read -p "$(echo -e ${CYAN}请输入选择${NC} [0-3]: )" link_choice </dev/tty
-        
+
         case $link_choice in
             1)
                 clear
                 draw_title_line "添加节点关联" 50
                 echo ""
-                
+
                 echo -e "  ${WHITE}${BOLD}线路鸡节点${NC}"
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
                 echo "$config" | jq -r '.relay_nodes[] | "  \(.id) - \(.name)"'
                 echo ""
-                
+
                 read -p "请输入线路鸡ID: " relay_id </dev/tty
                 [[ -z "$relay_id" ]] && { log_warning "操作已取消"; press_any_key; continue; }
-                
+
                 # 验证线路鸡是否存在
                 local relay_exists=$(echo "$config" | jq -r ".relay_nodes[] | select(.id == \"$relay_id\") | .id")
                 if [[ -z "$relay_exists" ]]; then
@@ -4750,16 +5317,16 @@ show_link_nodes_menu() {
                     press_any_key
                     continue
                 fi
-                
+
                 echo ""
                 echo -e "  ${WHITE}${BOLD}落地鸡节点${NC}"
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
                 echo "$config" | jq -r '.target_nodes[] | "  \(.id) - \(.name)"'
                 echo ""
-                
+
                 read -p "请输入落地鸡ID: " target_id </dev/tty
                 [[ -z "$target_id" ]] && { log_warning "操作已取消"; press_any_key; continue; }
-                
+
                 # 验证落地鸡是否存在
                 local target_exists=$(echo "$config" | jq -r ".target_nodes[] | select(.id == \"$target_id\") | .id")
                 if [[ -z "$target_exists" ]]; then
@@ -4767,7 +5334,7 @@ show_link_nodes_menu() {
                     press_any_key
                     continue
                 fi
-                
+
                 echo ""
                 log_info "正在添加关联..."
                 if link_relay_to_target "$relay_id" "$target_id"; then
@@ -4781,15 +5348,15 @@ show_link_nodes_menu() {
                 clear
                 draw_title_line "删除节点关联" 50
                 echo ""
-                
+
                 echo -e "  ${WHITE}${BOLD}线路鸡节点${NC}"
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
                 echo "$config" | jq -r '.relay_nodes[] | "  \(.id) - \(.name) (关联: \(.targets | length)个目标)"'
                 echo ""
-                
+
                 read -p "请输入线路鸡ID: " relay_id </dev/tty
                 [[ -z "$relay_id" ]] && { log_warning "操作已取消"; press_any_key; continue; }
-                
+
                 # 显示该线路鸡的关联目标
                 echo ""
                 echo -e "  ${WHITE}${BOLD}当前关联的落地鸡${NC}"
@@ -4800,16 +5367,16 @@ show_link_nodes_menu() {
                     press_any_key
                     continue
                 fi
-                
+
                 echo "$targets" | while read -r tid; do
                     local tname=$(echo "$config" | jq -r ".target_nodes[] | select(.id == \"$tid\") | .name")
                     echo "  $tid - $tname"
                 done
                 echo ""
-                
+
                 read -p "请输入要移除的落地鸡ID: " target_id </dev/tty
                 [[ -z "$target_id" ]] && { log_warning "操作已取消"; press_any_key; continue; }
-                
+
                 unlink_relay_from_target "$relay_id" "$target_id"
                 log_success "关联已删除"
                 press_any_key
@@ -4818,10 +5385,10 @@ show_link_nodes_menu() {
                 clear
                 draw_title_line "查看关联关系" 50
                 echo ""
-                
+
                 echo -e "  ${WHITE}${BOLD}节点关联关系${NC}"
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
-                
+
                 local has_links=0
                 while read -r relay; do
                     local rid=$(echo "$relay" | jq -r '.id')
@@ -4838,11 +5405,11 @@ show_link_nodes_menu() {
                         has_links=1
                     fi
                 done <<< "$(echo "$config" | jq -c '.relay_nodes[]')"
-                
+
                 if [[ $has_links -eq 0 ]]; then
                     echo -e "  ${DIM}暂无配置的关联关系${NC}"
                 fi
-                
+
                 echo ""
                 press_any_key
                 ;;
@@ -4857,14 +5424,14 @@ show_gost_config() {
     clear
     draw_title_line "当前 Gost 配置" 50
     echo ""
-    
+
     local config=$(load_gost_config)
-    
+
     echo -e "  ${WHITE}${BOLD}配置文件路径${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
     echo -e "  ${GOST_CONFIG_FILE}"
     echo ""
-    
+
     echo -e "  ${WHITE}${BOLD}线路鸡节点${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
     local relay_count=$(echo "$config" | jq '.relay_nodes | length')
@@ -4873,7 +5440,7 @@ show_gost_config() {
     else
         echo "$config" | jq -r '.relay_nodes[] | "  • \(.name) (\(.ip)) - 关联 \(.targets | length) 个目标"'
     fi
-    
+
     echo ""
     echo -e "  ${WHITE}${BOLD}落地鸡节点${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
@@ -4883,7 +5450,7 @@ show_gost_config() {
     else
         echo "$config" | jq -r '.target_nodes[] | "  • \(.name) (\(.ip):\(.tls_port)) - 转发到 \(.forward_target)"'
     fi
-    
+
     echo ""
     press_any_key
 }
@@ -4893,23 +5460,23 @@ generate_all_gost_scripts() {
     clear
     draw_title_line "生成配置脚本" 50
     echo ""
-    
+
     local config=$(load_gost_config)
     local relay_count=$(echo "$config" | jq '.relay_nodes | length')
     local target_count=$(echo "$config" | jq '.target_nodes | length')
-    
+
     if [[ "$relay_count" -eq 0 && "$target_count" -eq 0 ]]; then
         log_warning "暂无节点，无法生成配置"
         press_any_key
         return
     fi
-    
+
     mkdir -p "$GOST_DEPLOY_DIR"
-    
+
     echo -e "  ${WHITE}${BOLD}生成配置脚本${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
     echo ""
-    
+
     # 生成落地鸡脚本
     if [[ "$target_count" -gt 0 ]]; then
         log_info "正在生成落地鸡脚本..."
@@ -4917,12 +5484,12 @@ generate_all_gost_scripts() {
         generate_all_target_scripts
         echo ""
     fi
-    
+
     # 生成线路鸡脚本
     if [[ "$relay_count" -gt 0 ]]; then
         log_info "正在生成线路鸡脚本..."
         echo ""
-        
+
         while read -r relay; do
             local rid=$(echo "$relay" | jq -r '.id')
             local rname=$(echo "$relay" | jq -r '.name')
@@ -4937,7 +5504,7 @@ generate_all_gost_scripts() {
             fi
         done <<< "$(echo "$config" | jq -c '.relay_nodes[]')"
     fi
-    
+
     echo ""
     log_success "配置脚本已生成到: $GOST_DEPLOY_DIR"
     echo ""
@@ -4972,7 +5539,7 @@ generate_all_gost_scripts() {
     echo -e "  • 线路鸡会监听 10001+ 端口提供服务"
     echo -e "  • 所有流量通过 TLS 加密传输，无需 SSH"
     echo ""
-    
+
     press_any_key
 }
 
@@ -4981,12 +5548,12 @@ clear_all_gost_config() {
     clear
     draw_title_line "清除所有配置" 50
     echo ""
-    
+
     echo -e "  ${RED}${BOLD}⚠ 警告：此操作将删除所有节点和配置！${NC}"
     echo ""
-    
+
     read -p "确认清除所有配置? 请输入 'yes' 确认: " confirm </dev/tty
-    
+
     if [[ "$confirm" == "yes" ]]; then
         # 备份配置
         if [[ -f "$GOST_CONFIG_FILE" ]]; then
@@ -4994,7 +5561,7 @@ clear_all_gost_config() {
             cp "$GOST_CONFIG_FILE" "$backup_file"
             log_info "配置已备份到: $backup_file"
         fi
-        
+
         # 重新初始化配置
         cat > "$GOST_CONFIG_FILE" <<'EOF'
 {
@@ -5003,15 +5570,15 @@ clear_all_gost_config() {
   "target_nodes": []
 }
 EOF
-        
+
         # 清除生成的脚本
         rm -rf "$GOST_DEPLOY_DIR"/*.sh 2>/dev/null
-        
+
         log_success "所有配置已清除"
     else
         log_info "操作已取消"
     fi
-    
+
     press_any_key
 }
 
@@ -5185,11 +5752,26 @@ show_openclaw_menu() {
                 # 自定义安装目录
                 read -p "安装目录 [${oc_dir}]: " input_dir </dev/tty
                 [[ -n "$input_dir" ]] && oc_dir="$input_dir"
+                if ! is_safe_project_dir "$oc_dir"; then
+                    log_error "安装目录不安全，请使用类似 /opt/openclaw 的独立目录。"
+                    press_any_key
+                    continue
+                fi
 
                 # 端口
                 local oc_port="18789"
                 read -p "网关端口 [${oc_port}]: " input_port </dev/tty
                 [[ -n "$input_port" ]] && oc_port="$input_port"
+                if ! is_valid_port "$oc_port"; then
+                    log_error "端口无效，请输入 1-65535 之间的数字。"
+                    press_any_key
+                    continue
+                fi
+                if ! confirm_port_available "$oc_port" "网关端口"; then
+                    log_info "操作已取消"
+                    press_any_key
+                    continue
+                fi
 
                 # API Key 配置
                 echo ""
@@ -5197,11 +5779,14 @@ show_openclaw_menu() {
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
                 echo -e "  ${DIM}留空可跳过，稍后在配置文件中补充${NC}"
                 echo ""
-                read -p "Anthropic API Key (sk-ant-...): " anthropic_key </dev/tty
-                read -p "OpenAI API Key (sk-...): " openai_key </dev/tty
+                read -s -p "Anthropic API Key (sk-ant-...): " anthropic_key </dev/tty
+                echo ""
+                read -s -p "OpenAI API Key (sk-...): " openai_key </dev/tty
+                echo ""
 
                 # 生成 Gateway Token
-                local gw_token=$(openssl rand -hex 16 2>/dev/null || head -c 32 /dev/urandom | xxd -p | head -c 32)
+                local gw_token
+                gw_token=$(generate_secret 32)
 
                 echo ""
                 echo -e "  ${WHITE}${BOLD}部署信息${NC}"
@@ -5218,7 +5803,11 @@ show_openclaw_menu() {
                     continue
                 fi
 
-                sudo mkdir -p "${oc_dir}/config" "${oc_dir}/workspace"
+                if ! sudo mkdir -p "${oc_dir}/config" "${oc_dir}/workspace"; then
+                    log_error "创建目录失败，请检查路径和权限"
+                    press_any_key
+                    continue
+                fi
 
                 # 生成 .env 文件
                 sudo tee "${oc_dir}/.env" > /dev/null <<EOF
@@ -5305,6 +5894,16 @@ EOF
                             local oc_port="18789"
                             read -p "网关端口 [${oc_port}]: " input_port </dev/tty
                             [[ -n "$input_port" ]] && oc_port="$input_port"
+                            if ! is_valid_port "$oc_port"; then
+                                log_error "端口无效，请输入 1-65535 之间的数字。"
+                                press_any_key
+                                continue
+                            fi
+                            if ! confirm_port_available "$oc_port" "网关端口"; then
+                                log_info "操作已取消"
+                                press_any_key
+                                continue
+                            fi
                             echo ""
                             log_info "正在后台启动 OpenClaw 网关..."
                             nohup openclaw gateway --port "$oc_port" > /var/log/openclaw.log 2>&1 &
@@ -5384,8 +5983,12 @@ EOF
                                 if [[ "$del_data" == "y" || "$del_data" == "Y" ]]; then
                                     read -p "数据目录路径 [/opt/openclaw]: " data_dir </dev/tty
                                     data_dir=${data_dir:-/opt/openclaw}
-                                    sudo rm -rf "$data_dir"
-                                    log_info "数据目录已删除"
+                                    if is_safe_project_dir "$data_dir"; then
+                                        sudo rm -rf -- "$data_dir"
+                                        log_info "数据目录已删除"
+                                    else
+                                        log_error "数据目录路径不安全，已取消删除。"
+                                    fi
                                 fi
                                 log_success "OpenClaw (Docker) 已卸载"
                             fi
@@ -5475,4 +6078,3 @@ fi
 
 check_dependencies
 check_update
-main
