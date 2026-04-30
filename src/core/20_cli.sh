@@ -146,22 +146,7 @@ handle_args() {
             ;;
         --bbr)
             echo -e "${CYAN}  ℹ 正在开启 BBR...${NC}"
-            if grep -q "net.core.default_qdisc" /etc/sysctl.conf 2>/dev/null; then
-                sudo sed -i 's/net.core.default_qdisc.*/net.core.default_qdisc=fq/' /etc/sysctl.conf
-            else
-                echo "net.core.default_qdisc=fq" | sudo tee -a /etc/sysctl.conf >/dev/null
-            fi
-            if grep -q "net.ipv4.tcp_congestion_control" /etc/sysctl.conf 2>/dev/null; then
-                sudo sed -i 's/net.ipv4.tcp_congestion_control.*/net.ipv4.tcp_congestion_control=bbr/' /etc/sysctl.conf
-            else
-                echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.conf >/dev/null
-            fi
-            sudo sysctl -p >/dev/null 2>&1
-            if sysctl net.ipv4.tcp_congestion_control 2>/dev/null | grep -q bbr; then
-                echo -e "${GREEN}  ✓ BBR 已成功开启！${NC}"
-            else
-                echo -e "${RED}  ✗ BBR 开启失败，请检查内核版本${NC}"
-            fi
+            enable_builtin_bbr
             exit 0
             ;;
         --docker)

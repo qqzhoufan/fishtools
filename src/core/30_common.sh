@@ -177,6 +177,57 @@ backup_config_file() {
     echo "$backup_file"
 }
 
+enable_builtin_bbr() {
+    if ! command -v sysctl &>/dev/null; then
+        log_error "未找到 sysctl，无法启用 BBR。"
+        return 1
+    fi
+
+    if [[ ! -f /etc/sysctl.conf ]]; then
+        log_error "未找到 /etc/sysctl.conf，无法写入内核参数。"
+        return 1
+    fi
+
+    local backup_file
+    backup_file=$(backup_config_file /etc/sysctl.conf 2>/dev/null || true)
+    [[ -n "$backup_file" ]] && log_info "已备份 sysctl 配置: ${backup_file}"
+
+    sudo modprobe tcp_bbr 2>/dev/null || true
+
+    if grep -q "net.core.default_qdisc" /etc/sysctl.conf 2>/dev/null; then
+        sudo sed -i 's/net.core.default_qdisc.*/net.core.default_qdisc=fq/' /etc/sysctl.conf
+    else
+        echo "net.core.default_qdisc=fq" | sudo tee -a /etc/sysctl.conf >/dev/null
+    fi
+
+    if grep -q "net.ipv4.tcp_congestion_control" /etc/sysctl.conf 2>/dev/null; then
+        sudo sed -i 's/net.ipv4.tcp_congestion_control.*/net.ipv4.tcp_congestion_control=bbr/' /etc/sysctl.conf
+    else
+        echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.conf >/dev/null
+    fi
+
+    sudo sysctl -p >/dev/null 2>&1 || true
+
+    local current_cc available_cc current_qdisc
+    current_cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || true)
+    available_cc=$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || true)
+    current_qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null || true)
+
+    if [[ "$current_cc" == "bbr" ]]; then
+        log_success "BBR 已启用"
+        echo -e "  拥塞控制: ${CYAN}${current_cc}${NC}"
+        [[ -n "$current_qdisc" ]] && echo -e "  默认队列:   ${CYAN}${current_qdisc}${NC}"
+        return 0
+    fi
+
+    if [[ "$available_cc" != *"bbr"* ]]; then
+        log_error "当前内核不支持 BBR，可用算法: ${available_cc:-未知}"
+    else
+        log_error "BBR 未能生效，当前算法: ${current_cc:-未知}"
+    fi
+    return 1
+}
+
 is_port_in_use() {
     local port="$1"
     is_valid_port "$port" || return 1

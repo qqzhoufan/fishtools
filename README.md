@@ -4,7 +4,7 @@
 
 ### 咸鱼工具箱
 
-[![Version](https://img.shields.io/badge/version-v1.4.8-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
+[![Version](https://img.shields.io/badge/version-v1.4.9-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
 [![Author](https://img.shields.io/badge/author-咸鱼银河-orange.svg?style=for-the-badge)](https://github.com/qqzhoufan)
 [![Language](https://img.shields.io/badge/language-Bash-brightgreen.svg?style=for-the-badge)](https://www.gnu.org/software/bash/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
@@ -394,6 +394,13 @@ fishtools/
 ---
 
 ## 📝 更新日志
+
+### v1.4.9
+
+**BBR/TCP 优化修复:**
+- BBR/TCP 优化脚本改为多源下载，主源失败后自动尝试备用源
+- 新增内置基础 BBR 开启方式，第三方脚本全部下载失败时仍可继续尝试启用 BBR
+- `fish --bbr` 复用内置 BBR 逻辑，并在修改前备份 `/etc/sysctl.conf`
 
 ### v1.4.8
 

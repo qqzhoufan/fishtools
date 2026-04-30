@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =================================================================
-# fishtools (咸鱼工具箱) v1.4.8
+# fishtools (咸鱼工具箱) v1.4.9
 # Author: 咸鱼银河 (Xianyu Yinhe)
 # Github: https://github.com/qqzhoufan/fishtools
 #
@@ -15,7 +15,7 @@
 # --- 全局配置 ---
 AUTHOR_GITHUB_USER="qqzhoufan"
 MAIN_REPO_NAME="fishtools"
-VERSION="v1.4.8"
+VERSION="v1.4.9"
 SCRIPT_PATH="$(realpath "$0" 2>/dev/null || echo "$0")"
 
 # --- 颜色和样式定义 ---
@@ -287,22 +287,7 @@ handle_args() {
             ;;
         --bbr)
             echo -e "${CYAN}  ℹ 正在开启 BBR...${NC}"
-            if grep -q "net.core.default_qdisc" /etc/sysctl.conf 2>/dev/null; then
-                sudo sed -i 's/net.core.default_qdisc.*/net.core.default_qdisc=fq/' /etc/sysctl.conf
-            else
-                echo "net.core.default_qdisc=fq" | sudo tee -a /etc/sysctl.conf >/dev/null
-            fi
-            if grep -q "net.ipv4.tcp_congestion_control" /etc/sysctl.conf 2>/dev/null; then
-                sudo sed -i 's/net.ipv4.tcp_congestion_control.*/net.ipv4.tcp_congestion_control=bbr/' /etc/sysctl.conf
-            else
-                echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.conf >/dev/null
-            fi
-            sudo sysctl -p >/dev/null 2>&1
-            if sysctl net.ipv4.tcp_congestion_control 2>/dev/null | grep -q bbr; then
-                echo -e "${GREEN}  ✓ BBR 已成功开启！${NC}"
-            else
-                echo -e "${RED}  ✗ BBR 开启失败，请检查内核版本${NC}"
-            fi
+            enable_builtin_bbr
             exit 0
             ;;
         --docker)
@@ -554,6 +539,57 @@ backup_config_file() {
     sudo cp -a "$file_path" "$backup_file" || return 1
     echo "$file_path" | sudo tee "${backup_file}.path" >/dev/null 2>&1 || true
     echo "$backup_file"
+}
+
+enable_builtin_bbr() {
+    if ! command -v sysctl &>/dev/null; then
+        log_error "未找到 sysctl，无法启用 BBR。"
+        return 1
+    fi
+
+    if [[ ! -f /etc/sysctl.conf ]]; then
+        log_error "未找到 /etc/sysctl.conf，无法写入内核参数。"
+        return 1
+    fi
+
+    local backup_file
+    backup_file=$(backup_config_file /etc/sysctl.conf 2>/dev/null || true)
+    [[ -n "$backup_file" ]] && log_info "已备份 sysctl 配置: ${backup_file}"
+
+    sudo modprobe tcp_bbr 2>/dev/null || true
+
+    if grep -q "net.core.default_qdisc" /etc/sysctl.conf 2>/dev/null; then
+        sudo sed -i 's/net.core.default_qdisc.*/net.core.default_qdisc=fq/' /etc/sysctl.conf
+    else
+        echo "net.core.default_qdisc=fq" | sudo tee -a /etc/sysctl.conf >/dev/null
+    fi
+
+    if grep -q "net.ipv4.tcp_congestion_control" /etc/sysctl.conf 2>/dev/null; then
+        sudo sed -i 's/net.ipv4.tcp_congestion_control.*/net.ipv4.tcp_congestion_control=bbr/' /etc/sysctl.conf
+    else
+        echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.conf >/dev/null
+    fi
+
+    sudo sysctl -p >/dev/null 2>&1 || true
+
+    local current_cc available_cc current_qdisc
+    current_cc=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || true)
+    available_cc=$(sysctl -n net.ipv4.tcp_available_congestion_control 2>/dev/null || true)
+    current_qdisc=$(sysctl -n net.core.default_qdisc 2>/dev/null || true)
+
+    if [[ "$current_cc" == "bbr" ]]; then
+        log_success "BBR 已启用"
+        echo -e "  拥塞控制: ${CYAN}${current_cc}${NC}"
+        [[ -n "$current_qdisc" ]] && echo -e "  默认队列:   ${CYAN}${current_qdisc}${NC}"
+        return 0
+    fi
+
+    if [[ "$available_cc" != *"bbr"* ]]; then
+        log_error "当前内核不支持 BBR，可用算法: ${available_cc:-未知}"
+    else
+        log_error "BBR 未能生效，当前算法: ${current_cc:-未知}"
+    fi
+    return 1
 }
 
 is_port_in_use() {
@@ -3414,6 +3450,65 @@ show_dd_menu() {
     done
 }
 
+download_bbr_tcp_script() {
+    local dest="$1"
+    local source_name source_url
+    local sources=(
+        "NekoNeko 主源|https://sh.nekoneko.cloud/tools.sh"
+        "Linux-NetSpeed 主线|https://raw.githubusercontent.com/ylx2016/Linux-NetSpeed/master/tcp.sh"
+        "Linux-NetSpeed 备用|https://raw.githubusercontent.com/chiakge/Linux-NetSpeed/master/tcp.sh"
+    )
+
+    for source in "${sources[@]}"; do
+        source_name="${source%%|*}"
+        source_url="${source#*|}"
+        log_info "尝试下载 ${source_name}..."
+        if curl -fsSL --connect-timeout 10 --max-time 60 --retry 2 --retry-delay 1 "$source_url" -o "$dest" 2>/dev/null || \
+           curl -4 -fsSL --connect-timeout 10 --max-time 60 --retry 2 --retry-delay 1 "$source_url" -o "$dest" 2>/dev/null; then
+            if bash -n "$dest" 2>/dev/null; then
+                log_success "已下载 ${source_name}"
+                return 0
+            fi
+            log_warning "${source_name} 下载完成但语法检查失败，已跳过。"
+        else
+            log_warning "${source_name} 下载失败"
+        fi
+    done
+
+    return 1
+}
+
+run_bbr_tcp_optimization() {
+    clear
+    draw_title_line "BBR/TCP 优化" 50
+    echo ""
+    echo -e "  ${YELLOW}⚠ 此功能会执行第三方交互式 TCP 优化脚本。${NC}"
+    echo -e "  ${DIM}如果第三方脚本下载失败，可使用内置方式开启基础 BBR。${NC}"
+    echo ""
+
+    local tmp_file
+    tmp_file="$(mktemp /tmp/fishtools-bbr-tcp.XXXXXX)"
+
+    if download_bbr_tcp_script "$tmp_file"; then
+        chmod +x "$tmp_file"
+        echo ""
+        log_info "正在执行 BBR/TCP 优化脚本..."
+        bash "$tmp_file"
+        rm -f "$tmp_file"
+        return 0
+    fi
+
+    rm -f "$tmp_file"
+    echo ""
+    log_error "所有 BBR/TCP 优化脚本源均下载失败。"
+    echo ""
+    read -p "是否改用内置方式开启基础 BBR? (y/n): " builtin_bbr </dev/tty
+    if [[ "$builtin_bbr" == "y" || "$builtin_bbr" == "Y" ]]; then
+        echo ""
+        enable_builtin_bbr
+    fi
+}
+
 # 子菜单: VPS优化
 show_optimization_menu() {
     while true; do
@@ -3432,16 +3527,7 @@ show_optimization_menu() {
 
         case $opt_choice in
             1)
-                clear
-                draw_title_line "BBR/TCP 优化" 50
-                echo ""
-                log_info "正在下载并执行 BBR/TCP 优化脚本..."
-                if curl -fsL https://sh.nekoneko.cloud/tools.sh -o tools.sh; then
-                    bash tools.sh
-                    rm -f tools.sh
-                else
-                    log_error "下载脚本失败！"
-                fi
+                run_bbr_tcp_optimization
                 press_any_key
                 ;;
             2)
@@ -4245,7 +4331,8 @@ show_system_diagnostics() {
     diag_url_item optional "流媒体检测脚本" "https://raw.githubusercontent.com/lmc999/RegionRestrictionCheck/main/check.sh"
     diag_url_item optional "reinstall 主源" "https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh"
     diag_url_item optional "OsMutation 主源" "https://raw.githubusercontent.com/LloydAsp/OsMutation/main/OsMutation.sh"
-    diag_url_item optional "BBR/TCP 优化脚本" "https://sh.nekoneko.cloud/tools.sh"
+    diag_url_item optional "BBR/TCP 主源" "https://sh.nekoneko.cloud/tools.sh"
+    diag_url_item optional "BBR/TCP 备用源" "https://raw.githubusercontent.com/ylx2016/Linux-NetSpeed/master/tcp.sh"
     diag_url_item optional "WARP 管理脚本" "https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh"
     diag_url_item optional "鱼工具 IP 检测" "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/scripts/fish_ipcheck.sh"
     diag_url_item optional "Gost 管理脚本" "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/scripts/gost_manager.sh"
@@ -6542,3 +6629,4 @@ fi
 check_dependencies
 check_update
 main
+
