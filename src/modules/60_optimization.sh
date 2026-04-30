@@ -38,31 +38,6 @@ Update_Shell(){\
     fi
 }
 
-run_shell_script_as_root_in_dir() {
-    local work_dir="$1"
-    local script_file="$2"
-
-    if [[ $EUID -eq 0 ]]; then
-        (cd "$work_dir" && bash "$script_file")
-    else
-        (cd "$work_dir" && sudo bash "$script_file")
-    fi
-}
-
-cleanup_bbr_work_dir() {
-    local work_dir="$1"
-
-    case "$work_dir" in
-        /tmp/fishtools-bbr-tcp.*|/var/tmp/fishtools-bbr-tcp.*)
-            if [[ $EUID -eq 0 ]]; then
-                rm -rf -- "$work_dir"
-            else
-                sudo rm -rf -- "$work_dir" 2>/dev/null || rm -rf -- "$work_dir" 2>/dev/null || true
-            fi
-            ;;
-    esac
-}
-
 run_bbr_tcp_optimization() {
     clear
     draw_title_line "BBR/TCP 优化" 50
@@ -73,7 +48,11 @@ run_bbr_tcp_optimization() {
     echo ""
 
     local work_dir tmp_file
-    work_dir="$(mktemp -d /var/tmp/fishtools-bbr-tcp.XXXXXX 2>/dev/null || mktemp -d /tmp/fishtools-bbr-tcp.XXXXXX)"
+    work_dir="$(make_fishtools_work_dir bbr-tcp 2>/dev/null || true)"
+    if [[ -z "$work_dir" ]]; then
+        log_error "无法创建临时目录，已取消执行。"
+        return 1
+    fi
     tmp_file="${work_dir}/tools.sh"
 
     if download_bbr_tcp_script "$tmp_file"; then
@@ -81,12 +60,12 @@ run_bbr_tcp_optimization() {
         chmod +x "$tmp_file"
         echo ""
         log_info "正在执行 BBR/TCP 优化脚本..."
-        run_shell_script_as_root_in_dir "$work_dir" "$tmp_file"
-        cleanup_bbr_work_dir "$work_dir"
+        run_shell_script_in_dir "$work_dir" "$tmp_file" 1
+        cleanup_fishtools_work_dir "$work_dir"
         return 0
     fi
 
-    cleanup_bbr_work_dir "$work_dir"
+    cleanup_fishtools_work_dir "$work_dir"
     echo ""
     log_error "所有 BBR/TCP 优化脚本源均下载失败。"
     echo ""
@@ -123,12 +102,16 @@ show_optimization_menu() {
                 draw_title_line "SWAP 管理" 50
                 echo ""
                 log_info "正在下载并执行 SWAP 管理脚本..."
-                if curl -fsL https://www.moerats.com/usr/shell/swap.sh -o swap.sh; then
-                    bash swap.sh
-                    rm -f swap.sh
+                local work_dir script_file
+                work_dir="$(make_fishtools_work_dir swap 2>/dev/null || true)"
+                script_file="${work_dir}/swap.sh"
+                if [[ -n "$work_dir" ]] && download_file_with_fallback "$script_file" \
+                    "https://www.moerats.com/usr/shell/swap.sh"; then
+                    run_shell_script_in_dir "$work_dir" "$script_file" 1
                 else
                     log_error "下载脚本失败！"
                 fi
+                cleanup_fishtools_work_dir "$work_dir"
                 press_any_key
                 ;;
             3)
@@ -137,12 +120,16 @@ show_optimization_menu() {
                 echo ""
                 log_info "正在下载并执行 WARP 管理脚本..."
                 log_warning "此脚本将接管交互，请根据其提示操作。"
-                if curl -fsL "https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh" -o menu.sh; then
-                    bash menu.sh
-                    rm -f menu.sh
+                local work_dir script_file
+                work_dir="$(make_fishtools_work_dir warp 2>/dev/null || true)"
+                script_file="${work_dir}/menu.sh"
+                if [[ -n "$work_dir" ]] && download_file_with_fallback "$script_file" \
+                    "https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh"; then
+                    run_shell_script_in_dir "$work_dir" "$script_file" 1
                 else
                     log_error "下载脚本失败！"
                 fi
+                cleanup_fishtools_work_dir "$work_dir"
                 press_any_key
                 ;;
             0)

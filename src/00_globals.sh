@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =================================================================
-# fishtools (咸鱼工具箱) v1.4.10
+# fishtools (咸鱼工具箱) v1.4.11
 # Author: 咸鱼银河 (Xianyu Yinhe)
 # Github: https://github.com/qqzhoufan/fishtools
 #
@@ -15,7 +15,7 @@
 # --- 全局配置 ---
 AUTHOR_GITHUB_USER="qqzhoufan"
 MAIN_REPO_NAME="fishtools"
-VERSION="v1.4.10"
+VERSION="v1.4.11"
 SCRIPT_PATH="$(realpath "$0" 2>/dev/null || echo "$0")"
 
 # --- 颜色和样式定义 ---
@@ -30,11 +30,3 @@ GRAY='\033[0;90m'
 BOLD='\033[1m'
 DIM='\033[2m'
 NC='\033[0m'
-
-# --- 临时文件清理 ---
-_fishtools_cleanup() {
-    rm -f reinstall.sh OsMutation.sh ecs.sh nt_install.sh \
-          backtrace.sh superspeed.sh tools.sh swap.sh menu.sh \
-          fish_ipcheck.sh 2>/dev/null
-}
-trap _fishtools_cleanup EXIT

@@ -21,14 +21,19 @@ show_route_menu() {
                 log_info "正在下载回程路由测试脚本..."
                 log_info "此脚本将检测从 VPS 到中国各地区的回程路由线路"
                 echo ""
-                if curl -fsL https://raw.githubusercontent.com/zhanghanyun/backtrace/main/install.sh -o backtrace.sh 2>/dev/null; then
+                local work_dir script_file
+                work_dir="$(make_fishtools_work_dir backtrace 2>/dev/null || true)"
+                script_file="${work_dir}/backtrace.sh"
+                if [[ -n "$work_dir" ]] && download_file_with_fallback "$script_file" \
+                    "https://raw.githubusercontent.com/zhanghanyun/backtrace/main/install.sh"; then
                     log_success "下载成功，开始执行..."
                     echo ""
-                    chmod +x backtrace.sh && bash backtrace.sh || true
-                    rm -f backtrace.sh
+                    chmod +x "$script_file" 2>/dev/null || true
+                    run_shell_script_in_dir "$work_dir" "$script_file" 0 || true
                 else
                     log_error "脚本下载失败！"
                 fi
+                cleanup_fishtools_work_dir "$work_dir"
                 press_any_key
                 ;;
             2)
@@ -51,9 +56,13 @@ show_route_menu() {
                 echo ""
 
                 # 使用官方安装脚本
-                if curl -fsL https://raw.githubusercontent.com/nxtrace/NTrace-core/main/nt_install.sh -o nt_install.sh 2>/dev/null; then
-                    bash nt_install.sh || true
-                    rm -f nt_install.sh
+                local work_dir script_file
+                work_dir="$(make_fishtools_work_dir nexttrace 2>/dev/null || true)"
+                script_file="${work_dir}/nt_install.sh"
+                if [[ -n "$work_dir" ]] && download_file_with_fallback "$script_file" \
+                    "https://raw.githubusercontent.com/nxtrace/NTrace-core/main/nt_install.sh"; then
+                    run_shell_script_in_dir "$work_dir" "$script_file" 1 || true
+                    cleanup_fishtools_work_dir "$work_dir"
                     echo ""
                     log_success "NextTrace 安装完成！"
                     echo ""
@@ -65,6 +74,7 @@ show_route_menu() {
                     echo -e "  ${YELLOW}提示: 在中国的设备上运行 nexttrace ${vps_ip:-<您的VPS IP>} 可测试去程${NC}"
                 else
                     log_error "脚本下载失败！"
+                    cleanup_fishtools_work_dir "$work_dir"
                 fi
                 press_any_key
                 ;;
@@ -105,19 +115,26 @@ show_test_menu() {
                 echo ""
                 log_info "开始运行 融合怪 (ecs.sh) 测试脚本..."
                 log_info "尝试从主链接 (gitlab) 下载..."
-                if curl -fL https://gitlab.com/spiritysdx/za/-/raw/main/ecs.sh -o ecs.sh; then
+                local work_dir script_file
+                work_dir="$(make_fishtools_work_dir ecs 2>/dev/null || true)"
+                script_file="${work_dir}/ecs.sh"
+                if [[ -n "$work_dir" ]] && download_file_with_fallback "$script_file" \
+                    "https://gitlab.com/spiritysdx/za/-/raw/main/ecs.sh"; then
                     log_success "主链接下载成功。"
-                    chmod +x ecs.sh && bash ecs.sh
+                    chmod +x "$script_file" 2>/dev/null || true
+                    run_shell_script_in_dir "$work_dir" "$script_file" 0
                 else
                     log_warning "主链接下载失败，尝试从备用链接 (github) 下载..."
-                    if curl -fL https://github.com/spiritLHLS/ecs/raw/main/ecs.sh -o ecs.sh; then
+                    if [[ -n "$work_dir" ]] && download_file_with_fallback "$script_file" \
+                        "https://github.com/spiritLHLS/ecs/raw/main/ecs.sh"; then
                         log_success "备用链接下载成功。"
-                        chmod +x ecs.sh && bash ecs.sh
+                        chmod +x "$script_file" 2>/dev/null || true
+                        run_shell_script_in_dir "$work_dir" "$script_file" 0
                     else
                         log_error "主链接和备用链接均下载失败！"
                     fi
                 fi
-                rm -f ecs.sh
+                cleanup_fishtools_work_dir "$work_dir"
                 press_any_key
                 ;;
             2)
@@ -132,14 +149,18 @@ show_test_menu() {
                 else
                     # 从 GitHub 下载
                     log_info "正在从 GitHub 下载咸鱼 IP 检测脚本..."
-                    if curl -fsL "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/scripts/fish_ipcheck.sh" -o fish_ipcheck.sh 2>/dev/null; then
+                    local work_dir script_file
+                    work_dir="$(make_fishtools_work_dir fish-ipcheck 2>/dev/null || true)"
+                    script_file="${work_dir}/fish_ipcheck.sh"
+                    if [[ -n "$work_dir" ]] && download_file_with_fallback "$script_file" \
+                        "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/scripts/fish_ipcheck.sh"; then
                         log_success "下载成功，开始执行..."
                         echo ""
-                        bash fish_ipcheck.sh || true
-                        rm -f fish_ipcheck.sh
+                        run_shell_script_in_dir "$work_dir" "$script_file" 0 || true
                     else
                         log_error "脚本下载失败！"
                     fi
+                    cleanup_fishtools_work_dir "$work_dir"
                 fi
                 press_any_key
                 ;;
@@ -193,17 +214,21 @@ show_test_menu() {
                 echo ""
 
                 # 使用 bench.sh 的三网测速
-                if curl -fsL https://raw.githubusercontent.com/uxh/superspeed/master/superspeed.sh -o superspeed.sh 2>/dev/null; then
+                local work_dir script_file
+                work_dir="$(make_fishtools_work_dir superspeed 2>/dev/null || true)"
+                script_file="${work_dir}/superspeed.sh"
+                if [[ -n "$work_dir" ]] && download_file_with_fallback "$script_file" \
+                    "https://raw.githubusercontent.com/uxh/superspeed/master/superspeed.sh"; then
                     log_success "下载成功，开始执行..."
                     echo ""
-                    bash superspeed.sh || true
-                    rm -f superspeed.sh
+                    run_shell_script_in_dir "$work_dir" "$script_file" 0 || true
                 else
                     # 备用方案
                     log_warning "主脚本下载失败，尝试备用方案..."
                     bash <(curl -Lso- https://bench.im/hyperspeed) || \
                     log_error "三网测速脚本下载失败！"
                 fi
+                cleanup_fishtools_work_dir "$work_dir"
                 press_any_key
                 ;;
             6)
@@ -212,11 +237,20 @@ show_test_menu() {
                 echo ""
                 log_info "开始磁盘 IO 测试..."
                 echo ""
+                local work_dir test_file fio_file
+                work_dir="$(make_fishtools_work_dir disk-io 2>/dev/null || true)"
+                if [[ -z "$work_dir" ]]; then
+                    log_error "无法创建临时测试目录，已取消磁盘 IO 测试。"
+                    press_any_key
+                    continue
+                fi
+                test_file="${work_dir}/test_io_file"
+                fio_file="${work_dir}/fio_test"
 
                 echo -e "  ${WHITE}${BOLD}顺序写入测试 (1GB)${NC}"
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
                 sync
-                local write_result=$(dd if=/dev/zero of=./test_io_file bs=1M count=1024 conv=fdatasync 2>&1)
+                local write_result=$(dd if=/dev/zero of="$test_file" bs=1M count=1024 conv=fdatasync 2>&1)
                 local write_speed=$(echo "$write_result" | grep -oP '\d+\.?\d*\s*(MB|GB)/s' | tail -1)
                 echo -e "  ${GREEN}写入速度:${NC} ${write_speed:-解析失败}"
 
@@ -225,28 +259,29 @@ show_test_menu() {
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
                 # 清除缓存
                 sync && echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1 || true
-                local read_result=$(dd if=./test_io_file of=/dev/null bs=1M 2>&1)
+                local read_result=$(dd if="$test_file" of=/dev/null bs=1M 2>&1)
                 local read_speed=$(echo "$read_result" | grep -oP '\d+\.?\d*\s*(MB|GB)/s' | tail -1)
                 echo -e "  ${GREEN}读取速度:${NC} ${read_speed:-解析失败}"
 
                 # 清理测试文件
-                rm -f ./test_io_file
+                rm -f "$test_file"
 
                 echo ""
                 echo -e "  ${WHITE}${BOLD}4K 随机读写测试${NC}"
                 echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
                 if command -v fio &>/dev/null; then
-                    local fio_result=$(fio --name=random-rw --ioengine=sync --rw=randrw --bs=4k --size=64m --numjobs=1 --time_based --runtime=10 --group_reporting --filename=./fio_test 2>&1)
+                    local fio_result=$(fio --name=random-rw --ioengine=sync --rw=randrw --bs=4k --size=64m --numjobs=1 --time_based --runtime=10 --group_reporting --filename="$fio_file" 2>&1)
                     local read_iops=$(echo "$fio_result" | grep "read:" | grep -oP 'IOPS=\K[\d.]+[kKmM]?' | head -1)
                     local write_iops=$(echo "$fio_result" | grep "write:" | grep -oP 'IOPS=\K[\d.]+[kKmM]?' | head -1)
                     echo -e "  ${GREEN}4K 随机读 IOPS:${NC} ${read_iops:-N/A}"
                     echo -e "  ${GREEN}4K 随机写 IOPS:${NC} ${write_iops:-N/A}"
-                    rm -f ./fio_test
+                    rm -f "$fio_file"
                 else
                     echo -e "  ${YELLOW}fio 未安装，跳过 4K 随机读写测试${NC}"
                     echo -e "  ${DIM}可通过 apt install fio 安装${NC}"
                 fi
 
+                cleanup_fishtools_work_dir "$work_dir"
                 echo ""
                 press_any_key
                 ;;
@@ -306,14 +341,20 @@ show_dd_menu() {
                     continue
                 fi
 
+                local work_dir script_file
+                work_dir="$(make_fishtools_work_dir reinstall 2>/dev/null || true)"
+                script_file="${work_dir}/reinstall.sh"
+
                 log_info "尝试从主链接 (github) 下载 reinstall.sh..."
-                if curl -fL -o reinstall.sh https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh; then
+                if [[ -n "$work_dir" ]] && download_file_with_fallback "$script_file" \
+                    "https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh"; then
                     log_success "主链接下载成功。"
                 else
                     log_warning "主链接下载失败，尝试从备用链接 (cnb.cool) 下载..."
-                    if ! curl -fL -o reinstall.sh https://cnb.cool/bin456789/reinstall/-/git/raw/main/reinstall.sh; then
+                    if [[ -z "$work_dir" ]] || ! download_file_with_fallback "$script_file" \
+                        "https://cnb.cool/bin456789/reinstall/-/git/raw/main/reinstall.sh"; then
                          log_error "主链接和备用链接均下载失败！"
-                         rm -f reinstall.sh
+                         cleanup_fishtools_work_dir "$work_dir"
                          press_any_key
                          continue
                     fi
@@ -321,18 +362,18 @@ show_dd_menu() {
                 fi
 
                 # 验证下载的文件是否为有效的 shell 脚本
-                if [[ ! -f reinstall.sh ]] || ! head -1 reinstall.sh | grep -qE '^#!.*bash'; then
+                if [[ ! -f "$script_file" ]] || ! head -1 "$script_file" | grep -qE '^#!.*bash'; then
                     log_error "下载的文件不是有效的 shell 脚本！"
-                    rm -f reinstall.sh
+                    cleanup_fishtools_work_dir "$work_dir"
                     press_any_key
                     continue
                 fi
 
                 log_info "脚本已下载，即将执行。请根据后续脚本提示操作！"
                 echo ""
-                bash reinstall.sh
+                run_shell_script_in_dir "$work_dir" "$script_file" 1
                 local reinstall_exit=$?
-                rm -f reinstall.sh
+                cleanup_fishtools_work_dir "$work_dir"
                 echo ""
                 if [[ $reinstall_exit -ne 0 ]]; then
                     log_error "reinstall.sh 执行异常退出 (退出码: $reinstall_exit)"
@@ -353,14 +394,20 @@ show_dd_menu() {
                     continue
                 fi
 
+                local work_dir script_file
+                work_dir="$(make_fishtools_work_dir osmutation 2>/dev/null || true)"
+                script_file="${work_dir}/OsMutation.sh"
+
                 log_info "尝试从主链接 (github) 下载 OsMutation.sh..."
-                if curl -fL -o OsMutation.sh https://raw.githubusercontent.com/LloydAsp/OsMutation/main/OsMutation.sh; then
+                if [[ -n "$work_dir" ]] && download_file_with_fallback "$script_file" \
+                    "https://raw.githubusercontent.com/LloydAsp/OsMutation/main/OsMutation.sh"; then
                     log_success "主链接下载成功。"
                 else
                     log_warning "主链接下载失败，尝试从备用链接 (cnb.cool) 下载..."
-                    if ! curl -fL -o OsMutation.sh https://cnb.cool/LloydAsp/OsMutation/-/raw/main/OsMutation.sh; then
+                    if [[ -z "$work_dir" ]] || ! download_file_with_fallback "$script_file" \
+                        "https://cnb.cool/LloydAsp/OsMutation/-/raw/main/OsMutation.sh"; then
                         log_error "主链接和备用链接均下载失败！"
-                        rm -f OsMutation.sh
+                        cleanup_fishtools_work_dir "$work_dir"
                         press_any_key
                         continue
                     fi
@@ -368,18 +415,18 @@ show_dd_menu() {
                 fi
 
                 # 验证下载的文件是否为有效的 shell 脚本
-                if [[ ! -f OsMutation.sh ]] || ! head -1 OsMutation.sh | grep -qE '^#!.*bash'; then
+                if [[ ! -f "$script_file" ]] || ! head -1 "$script_file" | grep -qE '^#!.*bash'; then
                     log_error "下载的文件不是有效的 shell 脚本！"
-                    rm -f OsMutation.sh
+                    cleanup_fishtools_work_dir "$work_dir"
                     press_any_key
                     continue
                 fi
 
                 log_info "脚本已下载，即将执行。请根据后续脚本提示操作！"
                 echo ""
-                bash OsMutation.sh
+                run_shell_script_in_dir "$work_dir" "$script_file" 1
                 local osmu_exit=$?
-                rm -f OsMutation.sh
+                cleanup_fishtools_work_dir "$work_dir"
                 echo ""
                 if [[ $osmu_exit -ne 0 ]]; then
                     log_error "OsMutation.sh 执行异常退出 (退出码: $osmu_exit)"

@@ -108,6 +108,59 @@ safe_clean_user_cache() {
         -exec rm -rf -- {} + 2>/dev/null || true
 }
 
+make_fishtools_work_dir() {
+    local label="${1:-script}"
+    label="${label//[^A-Za-z0-9_.-]/-}"
+    [[ -n "$label" ]] || label="script"
+
+    mktemp -d "/var/tmp/fishtools-${label}.XXXXXX" 2>/dev/null || \
+    mktemp -d "/tmp/fishtools-${label}.XXXXXX" 2>/dev/null
+}
+
+cleanup_fishtools_work_dir() {
+    local work_dir="$1"
+    [[ -n "$work_dir" ]] || return 0
+
+    case "$work_dir" in
+        /tmp/fishtools-*|/var/tmp/fishtools-*)
+            if [[ $EUID -eq 0 ]]; then
+                rm -rf -- "$work_dir"
+            else
+                rm -rf -- "$work_dir" 2>/dev/null || sudo -n rm -rf -- "$work_dir" 2>/dev/null || true
+            fi
+            ;;
+    esac
+}
+
+download_file_with_fallback() {
+    local dest="$1"
+    shift
+
+    local url
+    for url in "$@"; do
+        if curl -fsSL --connect-timeout 10 --max-time 120 --retry 2 --retry-delay 1 "$url" -o "$dest" 2>/dev/null || \
+           curl -4 -fsSL --connect-timeout 10 --max-time 120 --retry 2 --retry-delay 1 "$url" -o "$dest" 2>/dev/null; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+run_shell_script_in_dir() {
+    local work_dir="$1"
+    local script_file="$2"
+    local run_as_root="${3:-0}"
+
+    [[ -d "$work_dir" && -f "$script_file" ]] || return 1
+
+    if [[ "$run_as_root" == "1" && $EUID -ne 0 ]]; then
+        (cd "$work_dir" && sudo bash "$script_file")
+    else
+        (cd "$work_dir" && bash "$script_file")
+    fi
+}
+
 generate_secret() {
     local length="${1:-24}"
     local secret=""

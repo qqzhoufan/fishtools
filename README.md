@@ -4,7 +4,7 @@
 
 ### 咸鱼工具箱
 
-[![Version](https://img.shields.io/badge/version-v1.4.10-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
+[![Version](https://img.shields.io/badge/version-v1.4.11-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
 [![Author](https://img.shields.io/badge/author-咸鱼银河-orange.svg?style=for-the-badge)](https://github.com/qqzhoufan)
 [![Language](https://img.shields.io/badge/language-Bash-brightgreen.svg?style=for-the-badge)](https://www.gnu.org/software/bash/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
@@ -394,6 +394,15 @@ fishtools/
 ---
 
 ## 📝 更新日志
+
+### v1.4.11
+
+**临时脚本权限修复:**
+- 性能测试、路由测试、DD 重装、SWAP、WARP 的第三方脚本统一改到独立临时目录执行
+- 磁盘 IO 测试文件也改到临时目录，避免当前目录不可写导致测试失败
+- 移除旧版退出时清理当前目录 `.sh` 文件的逻辑，避免误删用户同名文件
+- 避免用户从 `/opt`、`/usr/local/bin` 等不可写目录启动工具箱时出现 `Permission denied`
+- 新增通用下载/临时目录/执行辅助函数，后续新增第三方脚本可以复用同一套安全写法
 
 ### v1.4.10
 
