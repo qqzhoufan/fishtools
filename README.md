@@ -4,7 +4,7 @@
 
 ### 咸鱼工具箱
 
-[![Version](https://img.shields.io/badge/version-v1.4.9-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
+[![Version](https://img.shields.io/badge/version-v1.4.10-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
 [![Author](https://img.shields.io/badge/author-咸鱼银河-orange.svg?style=for-the-badge)](https://github.com/qqzhoufan)
 [![Language](https://img.shields.io/badge/language-Bash-brightgreen.svg?style=for-the-badge)](https://www.gnu.org/software/bash/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
@@ -394,6 +394,13 @@ fishtools/
 ---
 
 ## 📝 更新日志
+
+### v1.4.10
+
+**BBR/TCP 权限修复:**
+- 第三方 BBR/TCP 脚本改为在独立临时目录执行，避免 `/opt` 等目录权限导致 `tools.sh: Permission denied`
+- BBR/TCP 脚本执行时自动使用 root/sudo，减少 `dmesg`、`/proc` 权限报错
+- 接管 NNC 脚本内置的 `0. 升级脚本`，避免其自更新再次触发执行权限问题
 
 ### v1.4.9
 

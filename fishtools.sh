@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =================================================================
-# fishtools (咸鱼工具箱) v1.4.9
+# fishtools (咸鱼工具箱) v1.4.10
 # Author: 咸鱼银河 (Xianyu Yinhe)
 # Github: https://github.com/qqzhoufan/fishtools
 #
@@ -15,7 +15,7 @@
 # --- 全局配置 ---
 AUTHOR_GITHUB_USER="qqzhoufan"
 MAIN_REPO_NAME="fishtools"
-VERSION="v1.4.9"
+VERSION="v1.4.10"
 SCRIPT_PATH="$(realpath "$0" 2>/dev/null || echo "$0")"
 
 # --- 颜色和样式定义 ---
@@ -3478,27 +3478,67 @@ download_bbr_tcp_script() {
     return 1
 }
 
+prepare_bbr_tcp_script() {
+    local script_file="$1"
+
+    if grep -q "Powered by NNC.SH" "$script_file" 2>/dev/null; then
+        sed -i 's|http://sh.nekoneko.cloud|https://sh.nekoneko.cloud|g' "$script_file" 2>/dev/null || true
+        sed -i '/^Update_Shell(){/,/^}/c\
+Update_Shell(){\
+  echo "fishtools 已接管 BBR/TCP 脚本更新，无需在第三方脚本内升级。请返回菜单选择具体优化项。";\
+}' "$script_file" 2>/dev/null || true
+    fi
+}
+
+run_shell_script_as_root_in_dir() {
+    local work_dir="$1"
+    local script_file="$2"
+
+    if [[ $EUID -eq 0 ]]; then
+        (cd "$work_dir" && bash "$script_file")
+    else
+        (cd "$work_dir" && sudo bash "$script_file")
+    fi
+}
+
+cleanup_bbr_work_dir() {
+    local work_dir="$1"
+
+    case "$work_dir" in
+        /tmp/fishtools-bbr-tcp.*|/var/tmp/fishtools-bbr-tcp.*)
+            if [[ $EUID -eq 0 ]]; then
+                rm -rf -- "$work_dir"
+            else
+                sudo rm -rf -- "$work_dir" 2>/dev/null || rm -rf -- "$work_dir" 2>/dev/null || true
+            fi
+            ;;
+    esac
+}
+
 run_bbr_tcp_optimization() {
     clear
     draw_title_line "BBR/TCP 优化" 50
     echo ""
     echo -e "  ${YELLOW}⚠ 此功能会执行第三方交互式 TCP 优化脚本。${NC}"
+    echo -e "  ${DIM}脚本将在临时目录中以 root/sudo 执行，避免 /opt 等目录权限导致失败。${NC}"
     echo -e "  ${DIM}如果第三方脚本下载失败，可使用内置方式开启基础 BBR。${NC}"
     echo ""
 
-    local tmp_file
-    tmp_file="$(mktemp /tmp/fishtools-bbr-tcp.XXXXXX)"
+    local work_dir tmp_file
+    work_dir="$(mktemp -d /var/tmp/fishtools-bbr-tcp.XXXXXX 2>/dev/null || mktemp -d /tmp/fishtools-bbr-tcp.XXXXXX)"
+    tmp_file="${work_dir}/tools.sh"
 
     if download_bbr_tcp_script "$tmp_file"; then
+        prepare_bbr_tcp_script "$tmp_file"
         chmod +x "$tmp_file"
         echo ""
         log_info "正在执行 BBR/TCP 优化脚本..."
-        bash "$tmp_file"
-        rm -f "$tmp_file"
+        run_shell_script_as_root_in_dir "$work_dir" "$tmp_file"
+        cleanup_bbr_work_dir "$work_dir"
         return 0
     fi
 
-    rm -f "$tmp_file"
+    cleanup_bbr_work_dir "$work_dir"
     echo ""
     log_error "所有 BBR/TCP 优化脚本源均下载失败。"
     echo ""
@@ -6629,4 +6669,3 @@ fi
 check_dependencies
 check_update
 main
-
