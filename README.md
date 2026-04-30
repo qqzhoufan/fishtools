@@ -4,7 +4,7 @@
 
 ### 咸鱼工具箱
 
-[![Version](https://img.shields.io/badge/version-v1.4.2-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
+[![Version](https://img.shields.io/badge/version-v1.4.3-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
 [![Author](https://img.shields.io/badge/author-咸鱼银河-orange.svg?style=for-the-badge)](https://github.com/qqzhoufan)
 [![Language](https://img.shields.io/badge/language-Bash-brightgreen.svg?style=for-the-badge)](https://www.gnu.org/software/bash/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
@@ -373,6 +373,13 @@ fishtools/
 ---
 
 ## 📝 更新日志
+
+### v1.4.3
+
+**更新可靠性修复:**
+- `--update` 使用 no-cache 请求和时间戳链接，避免 VPS 拿到 GitHub Raw 旧缓存
+- 更新时显示当前脚本路径与远端版本，便于判断是否更新到了实际运行的 `fish` 命令
+- 更新提醒框改为 ASCII 样式，减少终端兼容问题
 
 ### v1.4.2
 

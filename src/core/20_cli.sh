@@ -1,16 +1,37 @@
 # --- 更新检查 ---
+get_release_url() {
+    local nonce
+    nonce="$(date +%s 2>/dev/null || echo "$RANDOM")"
+    echo "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/fishtools.sh?ts=${nonce}"
+}
+
+download_release_file() {
+    local dest="$1"
+    curl -fsSL --connect-timeout 10 --max-time 30 --retry 2 --retry-delay 1 \
+        -H "Cache-Control: no-cache" \
+        -H "Pragma: no-cache" \
+        "$(get_release_url)" -o "$dest"
+}
+
+read_remote_release() {
+    curl -fsSL --connect-timeout 5 --max-time 10 --retry 1 \
+        -H "Cache-Control: no-cache" \
+        -H "Pragma: no-cache" \
+        "$(get_release_url)"
+}
+
 check_update() {
     local remote_version
-    remote_version=$(curl -s --max-time 3 "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/fishtools.sh" 2>/dev/null | grep -oP 'VERSION="v\K[0-9.]+' | head -1)
+    remote_version=$(read_remote_release 2>/dev/null | grep -oP 'VERSION="v\K[0-9.]+' | head -1)
     local current_version="${VERSION#v}"
 
     if [[ -n "$remote_version" && "$remote_version" != "$current_version" ]]; then
         echo ""
-        echo -e "${YELLOW}  ╭───────────────────────────────────────────╮${NC}"
-        echo -e "${YELLOW}  │${NC}  ${WHITE}${BOLD}发现新版本 ${GREEN}v${remote_version}${NC} ${DIM}(当前 ${VERSION})${NC}          ${YELLOW}│${NC}"
-        echo -e "${YELLOW}  │${NC}  运行以下命令更新:                        ${YELLOW}│${NC}"
-        echo -e "${YELLOW}  │${NC}  ${CYAN}fish --update${NC}                           ${YELLOW}│${NC}"
-        echo -e "${YELLOW}  ╰───────────────────────────────────────────╯${NC}"
+        echo -e "${YELLOW}  +-------------------------------------------+${NC}"
+        echo -e "${YELLOW}  |${NC}  ${WHITE}${BOLD}发现新版本 ${GREEN}v${remote_version}${NC} ${DIM}(当前 ${VERSION})${NC}"
+        echo -e "${YELLOW}  |${NC}  运行以下命令更新:"
+        echo -e "${YELLOW}  |${NC}  ${CYAN}fish --update${NC}"
+        echo -e "${YELLOW}  +-------------------------------------------+${NC}"
         echo ""
     fi
 }
@@ -57,13 +78,15 @@ handle_args() {
             ;;
         -u|--update)
             echo -e "${CYAN}  ℹ 正在检查更新...${NC}"
+            echo -e "${DIM}  当前路径: ${SCRIPT_PATH}${NC}"
             local script_dir
             script_dir="$(dirname "$SCRIPT_PATH")"
             local tmp_file
             tmp_file="$(mktemp "${script_dir}/.fishtools_new.XXXXXX" 2>/dev/null || mktemp /tmp/fishtools_new.XXXXXX)"
-            if curl -fsSL "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/fishtools.sh" -o "$tmp_file" 2>/dev/null; then
+            if download_release_file "$tmp_file" 2>/dev/null; then
                 local remote_ver=$(grep -oP 'VERSION="v\K[0-9.]+' "$tmp_file" | head -1)
                 local current_ver="${VERSION#v}"
+                [[ -n "$remote_ver" ]] && echo -e "${DIM}  远端版本: v${remote_ver} / 当前版本: ${VERSION}${NC}"
                 if [[ -z "$remote_ver" ]]; then
                     echo -e "${RED}  ✗ 更新文件校验失败：未找到版本号${NC}"
                     rm -f "$tmp_file"
@@ -79,6 +102,12 @@ handle_args() {
                     chmod +x "$tmp_file"
                     if mv "$tmp_file" "$SCRIPT_PATH" 2>/dev/null || sudo mv "$tmp_file" "$SCRIPT_PATH"; then
                         echo -e "${GREEN}  ✓ 更新完成！请重新运行脚本。${NC}"
+                        local resolved_cmd
+                        resolved_cmd="$(command -v fish 2>/dev/null || true)"
+                        if [[ -n "$resolved_cmd" && "$(realpath "$resolved_cmd" 2>/dev/null || echo "$resolved_cmd")" != "$SCRIPT_PATH" ]]; then
+                            echo -e "${YELLOW}  ⚠ 当前 fish 命令指向: ${resolved_cmd}${NC}"
+                            echo -e "${YELLOW}  ⚠ 如版本仍未变化，请运行: sudo ${SCRIPT_PATH} --install${NC}"
+                        fi
                     else
                         echo -e "${RED}  ✗ 替换脚本失败，请检查权限${NC}"
                         rm -f "$tmp_file"
