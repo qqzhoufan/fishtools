@@ -1,13 +1,25 @@
-# --- Unicode 边框字符 ---
-# 使用简单的 ASCII 字符以确保兼容性
-LINE_H="─"
-LINE_V="│"
-CORNER_TL="┌"
-CORNER_TR="┐"
-CORNER_BL="└"
-CORNER_BR="┘"
-T_LEFT="├"
-T_RIGHT="┤"
+# --- 边框字符 ---
+# 默认使用 ASCII，避免 SSH/终端编码不一致时出现乱码。
+# 如确认终端支持 box-drawing 字符，可使用 FISHTOOLS_UNICODE=1 fish 开启。
+if [[ "${FISHTOOLS_UNICODE:-0}" == "1" ]]; then
+    LINE_H="─"
+    LINE_V="│"
+    CORNER_TL="┌"
+    CORNER_TR="┐"
+    CORNER_BL="└"
+    CORNER_BR="┘"
+    T_LEFT="├"
+    T_RIGHT="┤"
+else
+    LINE_H="-"
+    LINE_V="|"
+    CORNER_TL="+"
+    CORNER_TR="+"
+    CORNER_BL="+"
+    CORNER_BR="+"
+    T_LEFT="+"
+    T_RIGHT="+"
+fi
 
 # --- 基础日志函数 ---
 log_info() {

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =================================================================
-# fishtools (咸鱼工具箱) v1.4.1
+# fishtools (咸鱼工具箱) v1.4.2
 # Author: 咸鱼银河 (Xianyu Yinhe)
 # Github: https://github.com/qqzhoufan/fishtools
 #
@@ -15,7 +15,7 @@
 # --- 全局配置 ---
 AUTHOR_GITHUB_USER="qqzhoufan"
 MAIN_REPO_NAME="fishtools"
-VERSION="v1.4.1"
+VERSION="v1.4.2"
 SCRIPT_PATH="$(realpath "$0" 2>/dev/null || echo "$0")"
 
 # --- 颜色和样式定义 ---
@@ -330,16 +330,28 @@ handle_args() {
     esac
 }
 
-# --- Unicode 边框字符 ---
-# 使用简单的 ASCII 字符以确保兼容性
-LINE_H="─"
-LINE_V="│"
-CORNER_TL="┌"
-CORNER_TR="┐"
-CORNER_BL="└"
-CORNER_BR="┘"
-T_LEFT="├"
-T_RIGHT="┤"
+# --- 边框字符 ---
+# 默认使用 ASCII，避免 SSH/终端编码不一致时出现乱码。
+# 如确认终端支持 box-drawing 字符，可使用 FISHTOOLS_UNICODE=1 fish 开启。
+if [[ "${FISHTOOLS_UNICODE:-0}" == "1" ]]; then
+    LINE_H="─"
+    LINE_V="│"
+    CORNER_TL="┌"
+    CORNER_TR="┐"
+    CORNER_BL="└"
+    CORNER_BR="┘"
+    T_LEFT="├"
+    T_RIGHT="┤"
+else
+    LINE_H="-"
+    LINE_V="|"
+    CORNER_TL="+"
+    CORNER_TR="+"
+    CORNER_BL="+"
+    CORNER_BR="+"
+    T_LEFT="+"
+    T_RIGHT="+"
+fi
 
 # --- 基础日志函数 ---
 log_info() {
@@ -572,7 +584,12 @@ draw_menu_item() {
     local num="$1"
     local icon="$2"
     local text="$3"
-    echo -e "  ${CYAN}${BOLD}${num}.${NC} ${icon}  ${WHITE}${text}${NC}"
+
+    if [[ "${FISHTOOLS_EMOJI:-0}" == "1" ]]; then
+        printf "  ${CYAN}${BOLD}%2s.${NC} %-2s ${WHITE}%s${NC}\n" "$num" "$icon" "$text"
+    else
+        printf "  ${CYAN}${BOLD}%2s.${NC} ${WHITE}%s${NC}\n" "$num" "$text"
+    fi
 }
 
 # 绘制分隔线

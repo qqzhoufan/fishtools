@@ -32,7 +32,12 @@ draw_menu_item() {
     local num="$1"
     local icon="$2"
     local text="$3"
-    echo -e "  ${CYAN}${BOLD}${num}.${NC} ${icon}  ${WHITE}${text}${NC}"
+
+    if [[ "${FISHTOOLS_EMOJI:-0}" == "1" ]]; then
+        printf "  ${CYAN}${BOLD}%2s.${NC} %-2s ${WHITE}%s${NC}\n" "$num" "$icon" "$text"
+    else
+        printf "  ${CYAN}${BOLD}%2s.${NC} ${WHITE}%s${NC}\n" "$num" "$text"
+    fi
 }
 
 # 绘制分隔线
