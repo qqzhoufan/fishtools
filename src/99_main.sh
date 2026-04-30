@@ -13,7 +13,7 @@ main() {
         draw_menu_item "6" "⚡" "VPS 优化"
         draw_menu_item "7" "🔧" "系统工具"
         draw_menu_item "8" "🌐" "网络隧道工具"
-        draw_menu_item "9" "🤖" "OpenClaw AI 助手"
+        draw_menu_item "9" "🤖" "虾和马"
         echo ""
         draw_separator 50
         draw_menu_item "0" "👋" "退出脚本"
@@ -30,7 +30,7 @@ main() {
             6) show_optimization_menu ;;
             7) show_system_tools_menu ;;
             8) show_gost_menu ;;
-            9) show_openclaw_menu ;;
+            9) show_ai_agent_menu ;;
             0)
                 echo ""
                 echo -e "  ${CYAN}感谢使用 fishtools，再见！${NC} 👋"

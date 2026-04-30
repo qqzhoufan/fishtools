@@ -20,6 +20,7 @@ PARTS=(
   "src/modules/80_system_tools.sh"
   "src/modules/90_gost.sh"
   "src/modules/95_openclaw.sh"
+  "src/modules/96_ai_agents.sh"
   "src/99_main.sh"
 )
 

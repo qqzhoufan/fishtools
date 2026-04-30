@@ -4,7 +4,7 @@
 
 ### 咸鱼工具箱
 
-[![Version](https://img.shields.io/badge/version-v1.4.4-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
+[![Version](https://img.shields.io/badge/version-v1.4.5-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
 [![Author](https://img.shields.io/badge/author-咸鱼银河-orange.svg?style=for-the-badge)](https://github.com/qqzhoufan)
 [![Language](https://img.shields.io/badge/language-Bash-brightgreen.svg?style=for-the-badge)](https://www.gnu.org/software/bash/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
@@ -88,7 +88,7 @@ bash <(curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fisht
 │  6. ⚡  VPS 优化                                     │
 │  7. 🔧  系统工具                                     │
 │  8. 🌐  网络隧道工具 (Gost)                          │
-│  9. 🤖  OpenClaw AI 助手                              │
+│  9. 🤖  虾和马                                        │
 │                                                      │
 └──────────────────────────────────────────────────────┘
 ```
@@ -237,9 +237,16 @@ bash <(curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fisht
 
 ---
 
-### 9. 🤖 OpenClaw AI 助手
+### 9. 🤖 虾和马
 
-一键部署 [OpenClaw](https://github.com/openclaw/openclaw) —— 开源个人 AI 智能体。
+AI Agent 工具集合，集中管理 [OpenClaw](https://github.com/openclaw/openclaw) 和 [Hermes Agent](https://github.com/NousResearch/hermes-agent)。
+
+| 功能 | 说明 |
+|:---|:---|
+| 🤖 OpenClaw AI 助手 | 保留原 OpenClaw 完整安装、部署、管理菜单 |
+| ☤ Hermes Agent | 一键安装 Hermes Agent，并提供 setup、gateway、doctor、迁移配置等常用入口 |
+
+#### OpenClaw 功能
 
 | 功能 | 说明 |
 |:---|:---|
@@ -249,8 +256,19 @@ bash <(curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fisht
 | 📊 状态/日志 | 查看运行状态和最近日志 |
 | 🗑️ 卸载 | 支持 Docker 和 npm 两种方式的完整卸载 |
 
+#### Hermes Agent 功能
+
+| 功能 | 说明 |
+|:---|:---|
+| 📦 一键安装 | 下载并运行 Nous Research 官方安装脚本 |
+| 🧭 setup 向导 | 配置模型、工具和消息网关 |
+| 💬 终端聊天 | 启动 Hermes CLI |
+| 🌉 消息网关 | 启动 Telegram/Discord/Slack 等网关入口 |
+| 🩺 doctor 诊断 | 调用 `hermes doctor` 检查运行环境 |
+| 🔁 配置迁移 | 调用 `hermes claw migrate` 从 OpenClaw 迁移配置 |
+
 > [!TIP]
-> 推荐使用 Docker 方式部署，隔离性好且易于更新。npm 方式适合开发调试。
+> OpenClaw 推荐使用 Docker 方式部署，隔离性好且易于更新。Hermes Agent 推荐用日常登录用户安装，避免装到 root 用户环境。
 
 ---
 
@@ -367,12 +385,20 @@ fishtools/
 | [BBR/TCP 优化](http://sh.nekoneko.cloud/) | nekoneko.cloud |
 | [SWAP 管理](https://www.moerats.com/) | Moerats |
 | [WARP 管理](https://gitlab.com/fscarmen/warp) | fscarmen |
+| [Hermes Agent](https://github.com/NousResearch/hermes-agent) | Nous Research |
 
 以及 [**NodeSeek 论坛**](https://www.nodeseek.com/) 和其他技术社区的网友们！
 
 ---
 
 ## 📝 更新日志
+
+### v1.4.5
+
+**AI 工具菜单:**
+- 主菜单第 9 项改为「虾和马」，作为 AI Agent 工具集合入口
+- OpenClaw 移入「虾和马」菜单，原有 OpenClaw 管理功能保持不变
+- 新增 Hermes Agent 一键安装、setup、gateway、doctor、OpenClaw 配置迁移入口
 
 ### v1.4.4
 
