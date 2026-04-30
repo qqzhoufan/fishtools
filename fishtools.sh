@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =================================================================
-# fishtools (咸鱼工具箱) v1.4.7
+# fishtools (咸鱼工具箱) v1.4.8
 # Author: 咸鱼银河 (Xianyu Yinhe)
 # Github: https://github.com/qqzhoufan/fishtools
 #
@@ -15,7 +15,7 @@
 # --- 全局配置 ---
 AUTHOR_GITHUB_USER="qqzhoufan"
 MAIN_REPO_NAME="fishtools"
-VERSION="v1.4.7"
+VERSION="v1.4.8"
 SCRIPT_PATH="$(realpath "$0" 2>/dev/null || echo "$0")"
 
 # --- 颜色和样式定义 ---
@@ -6499,12 +6499,13 @@ main() {
         draw_menu_item "7" "🔧" "系统工具"
         draw_menu_item "8" "🌐" "网络隧道工具"
         draw_menu_item "9" "🤖" "虾和马"
+        draw_menu_item "10" "🩺" "全功能巡检"
         echo ""
         draw_separator 50
         draw_menu_item "0" "👋" "退出脚本"
         draw_footer 50
         echo ""
-        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-9]: )" main_choice </dev/tty
+        read -p "$(echo -e ${CYAN}请输入选择${NC} [0-10]: )" main_choice </dev/tty
 
         case $main_choice in
             1) show_status_menu ;;
@@ -6516,6 +6517,7 @@ main() {
             7) show_system_tools_menu ;;
             8) show_gost_menu ;;
             9) show_ai_agent_menu ;;
+            10) show_system_diagnostics ;;
             0)
                 echo ""
                 echo -e "  ${CYAN}感谢使用 fishtools，再见！${NC} 👋"

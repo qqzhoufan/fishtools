@@ -4,7 +4,7 @@
 
 ### 咸鱼工具箱
 
-[![Version](https://img.shields.io/badge/version-v1.4.7-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
+[![Version](https://img.shields.io/badge/version-v1.4.8-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
 [![Author](https://img.shields.io/badge/author-咸鱼银河-orange.svg?style=for-the-badge)](https://github.com/qqzhoufan)
 [![Language](https://img.shields.io/badge/language-Bash-brightgreen.svg?style=for-the-badge)](https://www.gnu.org/software/bash/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
@@ -89,6 +89,7 @@ bash <(curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fisht
 │  7. 🔧  系统工具                                     │
 │  8. 🌐  网络隧道工具 (Gost)                          │
 │  9. 🤖  虾和马                                        │
+│ 10. 🩺  全功能巡检                                   │
 │                                                      │
 └──────────────────────────────────────────────────────┘
 ```
@@ -393,6 +394,12 @@ fishtools/
 ---
 
 ## 📝 更新日志
+
+### v1.4.8
+
+**巡检入口优化:**
+- 主菜单新增 `10. 全功能巡检`，打开工具箱第一屏即可看到
+- `fish --doctor` / 系统工具内入口继续保留
 
 ### v1.4.7
 
