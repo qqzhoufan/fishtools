@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =================================================================
-# fishtools (咸鱼工具箱) v1.4.3
+# fishtools (咸鱼工具箱) v1.4.4
 # Author: 咸鱼银河 (Xianyu Yinhe)
 # Github: https://github.com/qqzhoufan/fishtools
 #
@@ -15,7 +15,7 @@
 # --- 全局配置 ---
 AUTHOR_GITHUB_USER="qqzhoufan"
 MAIN_REPO_NAME="fishtools"
-VERSION="v1.4.3"
+VERSION="v1.4.4"
 SCRIPT_PATH="$(realpath "$0" 2>/dev/null || echo "$0")"
 
 # --- 颜色和样式定义 ---
@@ -140,10 +140,23 @@ check_dependencies() {
 }
 
 # --- 更新检查 ---
+get_release_ref() {
+    local ref_sha
+    ref_sha=$(curl -fsSL --connect-timeout 5 --max-time 10 --retry 1 \
+        -H "Accept: application/vnd.github+json" \
+        -H "Cache-Control: no-cache" \
+        "https://api.github.com/repos/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/git/ref/heads/main" 2>/dev/null \
+        | sed -n 's/.*"sha"[[:space:]]*:[[:space:]]*"\([0-9a-f]\{40\}\)".*/\1/p' \
+        | head -1)
+    echo "${ref_sha:-main}"
+}
+
 get_release_url() {
+    local ref
     local nonce
+    ref="$(get_release_ref)"
     nonce="$(date +%s 2>/dev/null || echo "$RANDOM")"
-    echo "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/fishtools.sh?ts=${nonce}"
+    echo "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/${ref}/fishtools.sh?ts=${nonce}"
 }
 
 download_release_file() {

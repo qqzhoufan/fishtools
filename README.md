@@ -4,7 +4,7 @@
 
 ### 咸鱼工具箱
 
-[![Version](https://img.shields.io/badge/version-v1.4.3-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
+[![Version](https://img.shields.io/badge/version-v1.4.4-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
 [![Author](https://img.shields.io/badge/author-咸鱼银河-orange.svg?style=for-the-badge)](https://github.com/qqzhoufan)
 [![Language](https://img.shields.io/badge/language-Bash-brightgreen.svg?style=for-the-badge)](https://www.gnu.org/software/bash/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
@@ -373,6 +373,12 @@ fishtools/
 ---
 
 ## 📝 更新日志
+
+### v1.4.4
+
+**GitHub Raw 缓存修复:**
+- 更新器优先通过 GitHub API 获取 `main` 最新 commit SHA，再下载固定 commit 的 `fishtools.sh`
+- 避免 `raw.githubusercontent.com/.../main/...` 分支缓存滞后导致 VPS 一直停留在旧版本
 
 ### v1.4.3
 
