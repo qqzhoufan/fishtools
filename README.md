@@ -4,7 +4,7 @@
 
 ### 咸鱼工具箱
 
-[![Version](https://img.shields.io/badge/version-v1.4.6-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
+[![Version](https://img.shields.io/badge/version-v1.4.7-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
 [![Author](https://img.shields.io/badge/author-咸鱼银河-orange.svg?style=for-the-badge)](https://github.com/qqzhoufan)
 [![Language](https://img.shields.io/badge/language-Bash-brightgreen.svg?style=for-the-badge)](https://www.gnu.org/software/bash/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
@@ -232,7 +232,7 @@ bash <(curl -sL https://raw.githubusercontent.com/qqzhoufan/fishtools/main/fisht
 | 📦 系统包一键更新 | 一键更新所有已安装软件包 |
 | 📋 系统日志查看 | syslog/认证日志/dmesg/实时跟踪/关键词搜索 |
 | 📊 流量统计 (vnstat) | 月度/日/小时流量统计与实时监控 |
-| 🩺 系统自检诊断 | 检查关键依赖、Docker、GitHub 连通性、磁盘/inode、常用端口占用 |
+| 🩺 全功能巡检 | 按主菜单检查依赖、权限、Docker、GitHub、第三方脚本源、AI 工具、磁盘和端口 |
 | ♻️ 配置备份恢复 | 恢复工具自动备份的 SSH/Nginx/Caddy 等配置文件 |
 
 ---
@@ -285,6 +285,7 @@ fish --help      # 显示帮助信息
 fish --version   # 显示版本
 fish --update    # 检查并更新脚本
 fish --info      # 快速查看系统信息
+fish --doctor    # 全功能巡检
 fish --bbr       # 一键开启 BBR
 fish --docker    # 进入 Docker 管理
 fish --test      # 进入性能测试菜单
@@ -392,6 +393,13 @@ fishtools/
 ---
 
 ## 📝 更新日志
+
+### v1.4.7
+
+**全功能巡检:**
+- 系统工具中新增/升级「全功能巡检」，按主菜单逐项检查运行条件
+- 新增 `fish --doctor` / `fish --check` 命令行入口
+- 巡检覆盖权限、核心依赖、GitHub 更新源、Docker/Compose、第三方脚本源、AI 工具、磁盘/inode/内存和常用端口
 
 ### v1.4.6
 

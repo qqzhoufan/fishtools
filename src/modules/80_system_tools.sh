@@ -12,13 +12,69 @@ print_diag_item() {
     esac
 }
 
+diag_cmd_item() {
+    local level="$1"
+    local cmd="$2"
+    local detail="${3:-}"
+
+    if command -v "$cmd" &>/dev/null; then
+        print_diag_item ok "$cmd" "$(command -v "$cmd")"
+    elif [[ "$level" == "required" ]]; then
+        print_diag_item fail "$cmd" "${detail:-未安装，核心功能可能不可用}"
+    else
+        print_diag_item warn "$cmd" "${detail:-未安装，部分功能可能受限}"
+    fi
+}
+
+diag_url_reachable() {
+    local url="$1"
+    curl -fsIL --connect-timeout 3 --max-time 6 "$url" -o /dev/null 2>/dev/null || \
+        curl -fsL --connect-timeout 3 --max-time 6 -r 0-0 "$url" -o /dev/null 2>/dev/null
+}
+
+diag_url_item() {
+    local level="$1"
+    local name="$2"
+    local url="$3"
+
+    if diag_url_reachable "$url"; then
+        print_diag_item ok "$name" "可访问"
+    elif [[ "$level" == "required" ]]; then
+        print_diag_item fail "$name" "访问失败: $url"
+    else
+        print_diag_item warn "$name" "访问失败: $url"
+    fi
+}
+
+diag_sudo_ready() {
+    [[ $EUID -eq 0 ]] || sudo -n true 2>/dev/null
+}
+
+diag_has_docker_compose() {
+    command -v docker &>/dev/null && docker compose version &>/dev/null
+}
+
+diag_feature_item() {
+    local status="$1"
+    local name="$2"
+    local detail="$3"
+    print_diag_item "$status" "$name" "$detail"
+}
+
 show_system_diagnostics() {
+    local no_pause=0
+    [[ "${1:-}" == "--no-pause" ]] && no_pause=1
+
     clear
-    draw_title_line "系统自检诊断" 50
+    draw_title_line "全功能巡检" 50
+    echo ""
+    echo -e "  ${DIM}只做环境、依赖和外部链接检查，不会执行 DD、重装、优化或安装脚本。${NC}"
     echo ""
 
     echo -e "  ${WHITE}${BOLD}基础信息${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    print_diag_item ok "脚本版本" "$VERSION"
+    print_diag_item ok "脚本路径" "$SCRIPT_PATH"
     print_diag_item ok "主机名" "$(hostname 2>/dev/null || echo unknown)"
     print_diag_item ok "内核" "$(uname -srmo 2>/dev/null || uname -a)"
     if [[ -f /etc/os-release ]]; then
@@ -27,28 +83,49 @@ show_system_diagnostics() {
         print_diag_item ok "系统" "${os_name:-unknown}"
     fi
     print_diag_item ok "包管理器" "$(detect_pkg_manager)"
+    local access_host
+    access_host=$(get_primary_access_host)
+    if [[ -n "$access_host" ]]; then
+        print_diag_item ok "访问地址 IP" "$access_host"
+    else
+        print_diag_item warn "访问地址 IP" "自动获取失败，部署后需手动替换"
+    fi
+    if [[ $EUID -eq 0 ]]; then
+        print_diag_item ok "权限" "root"
+    elif sudo -n true 2>/dev/null; then
+        print_diag_item ok "权限" "非 root，但免密 sudo 可用"
+    else
+        print_diag_item warn "权限" "非 root 且无免密 sudo，安装/修改系统配置时需要输入密码或改用 root"
+    fi
     echo ""
 
     echo -e "  ${WHITE}${BOLD}关键依赖${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
     local cmd
-    for cmd in curl sudo awk sed grep systemctl; do
-        if command -v "$cmd" &>/dev/null; then
-            print_diag_item ok "$cmd" "$(command -v "$cmd")"
-        else
-            print_diag_item fail "$cmd" "未安装"
-        fi
+    for cmd in bash curl sudo awk sed grep; do
+        diag_cmd_item required "$cmd"
     done
-    for cmd in jq bc dig ss; do
-        if command -v "$cmd" &>/dev/null; then
-            print_diag_item ok "$cmd" "$(command -v "$cmd")"
-        else
-            print_diag_item warn "$cmd" "未安装，部分功能可能受限"
-        fi
+    for cmd in systemctl jq bc dig ss openssl crontab journalctl; do
+        diag_cmd_item optional "$cmd"
     done
     echo ""
 
-    echo -e "  ${WHITE}${BOLD}Docker 状态${NC}"
+    echo -e "  ${WHITE}${BOLD}网络与更新源${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    local public_ipv4
+    public_ipv4=$(get_public_ipv4)
+    if [[ -n "$public_ipv4" ]]; then
+        print_diag_item ok "公网 IPv4" "$public_ipv4"
+    else
+        print_diag_item warn "公网 IPv4" "获取失败"
+    fi
+    diag_url_item required "GitHub API" "https://api.github.com/repos/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/git/ref/heads/main"
+    diag_url_item required "脚本更新源" "$(get_release_url)"
+    diag_url_item optional "Docker 安装脚本" "https://get.docker.com"
+    diag_url_item optional "NodeSource Node.js 22" "https://deb.nodesource.com/setup_22.x"
+    echo ""
+
+    echo -e "  ${WHITE}${BOLD}Docker 与容器部署${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
     if command -v docker &>/dev/null; then
         print_diag_item ok "docker" "$(docker --version 2>/dev/null | head -1)"
@@ -62,37 +139,108 @@ show_system_diagnostics() {
         else
             print_diag_item warn "docker 服务" "未运行或非 systemd 环境"
         fi
+        if docker info &>/dev/null; then
+            print_diag_item ok "docker 权限" "当前用户可直接访问 Docker"
+        elif diag_sudo_ready && sudo docker info &>/dev/null; then
+            print_diag_item ok "docker 权限" "可通过 sudo 访问 Docker"
+        else
+            print_diag_item warn "docker 权限" "当前用户暂不能访问 Docker，部署时可能需要 sudo 密码或加入 docker 组"
+        fi
     else
         print_diag_item warn "docker" "未安装"
     fi
+    diag_url_item optional "预设项目配置" "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/presets/homepage/docker-compose.yaml"
     echo ""
 
-    echo -e "  ${WHITE}${BOLD}网络连通性${NC}"
+    echo -e "  ${WHITE}${BOLD}主菜单功能巡检${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
-    local public_ipv4
-    public_ipv4=$(get_public_ipv4)
-    if [[ -n "$public_ipv4" ]]; then
-        print_diag_item ok "公网 IPv4" "$public_ipv4"
+    if command -v curl &>/dev/null && command -v awk &>/dev/null && command -v sed &>/dev/null; then
+        diag_feature_item ok "1 系统状态监控" "核心命令可用"
     else
-        print_diag_item warn "公网 IPv4" "获取失败"
+        diag_feature_item fail "1 系统状态监控" "缺少 curl/awk/sed 等基础命令"
     fi
-    if curl -fsSL --max-time 5 "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/fishtools.sh" -o /dev/null 2>/dev/null; then
-        print_diag_item ok "GitHub Raw" "可访问"
+    diag_feature_item ok "2 性能/网络测试" "菜单可用；第三方测速脚本见下方外部脚本源"
+    diag_feature_item warn "3 DD系统/重装系统" "高风险功能，仅检查下载源，不自动执行"
+    if [[ "$(detect_pkg_manager)" != "unknown" ]]; then
+        diag_feature_item ok "4 常用软件安装" "包管理器可用: $(detect_pkg_manager)"
     else
-        print_diag_item warn "GitHub Raw" "访问失败，更新/预设/Gost 自动补齐可能受影响"
+        diag_feature_item fail "4 常用软件安装" "未识别 apt/dnf/yum"
+    fi
+    if diag_has_docker_compose; then
+        diag_feature_item ok "5 Docker Compose 项目部署" "Docker 与 Compose 可用"
+    else
+        diag_feature_item warn "5 Docker Compose 项目部署" "需要 Docker 与 Docker Compose"
+    fi
+    if command -v sysctl &>/dev/null; then
+        diag_feature_item ok "6 VPS 优化" "sysctl 可用；部分优化仍依赖内核和外部脚本"
+    else
+        diag_feature_item warn "6 VPS 优化" "缺少 sysctl"
+    fi
+    if diag_sudo_ready; then
+        diag_feature_item ok "7 系统工具" "系统配置类操作权限基本满足"
+    else
+        diag_feature_item warn "7 系统工具" "部分操作需要 sudo 密码或 root"
+    fi
+    if command -v jq &>/dev/null; then
+        diag_feature_item ok "8 网络隧道工具" "jq 可用；Gost 脚本源见下方"
+    else
+        diag_feature_item warn "8 网络隧道工具" "需要 jq，脚本会尝试自动安装"
+    fi
+    if command -v openclaw &>/dev/null || command -v hermes &>/dev/null || command -v node &>/dev/null || command -v docker &>/dev/null; then
+        diag_feature_item ok "9 虾和马" "检测到 AI 工具运行基础或已安装组件"
+    else
+        diag_feature_item warn "9 虾和马" "OpenClaw/Hermes 需要 Node.js、Docker 或官方安装脚本"
     fi
     echo ""
 
-    echo -e "  ${WHITE}${BOLD}磁盘与 inode${NC}"
+    echo -e "  ${WHITE}${BOLD}外部脚本源巡检${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    diag_url_item optional "融合怪 ecs.sh" "https://gitlab.com/spiritysdx/za/-/raw/main/ecs.sh"
+    diag_url_item optional "回程路由 backtrace" "https://raw.githubusercontent.com/zhanghanyun/backtrace/main/install.sh"
+    diag_url_item optional "NextTrace 安装脚本" "https://raw.githubusercontent.com/nxtrace/NTrace-core/main/nt_install.sh"
+    diag_url_item optional "流媒体检测脚本" "https://raw.githubusercontent.com/lmc999/RegionRestrictionCheck/main/check.sh"
+    diag_url_item optional "reinstall 主源" "https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh"
+    diag_url_item optional "OsMutation 主源" "https://raw.githubusercontent.com/LloydAsp/OsMutation/main/OsMutation.sh"
+    diag_url_item optional "BBR/TCP 优化脚本" "https://sh.nekoneko.cloud/tools.sh"
+    diag_url_item optional "WARP 管理脚本" "https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh"
+    diag_url_item optional "鱼工具 IP 检测" "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/scripts/fish_ipcheck.sh"
+    diag_url_item optional "Gost 管理脚本" "https://raw.githubusercontent.com/${AUTHOR_GITHUB_USER}/${MAIN_REPO_NAME}/main/scripts/gost_manager.sh"
+    echo ""
+
+    echo -e "  ${WHITE}${BOLD}AI 工具巡检${NC}"
+    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
+    if declare -F check_node_version >/dev/null && check_node_version; then
+        print_diag_item ok "Node.js" "$(node -v 2>/dev/null)"
+    elif command -v node &>/dev/null; then
+        local node_ver
+        node_ver=$(node -v 2>/dev/null || true)
+        [[ -z "$node_ver" ]] && node_ver="版本获取失败"
+        print_diag_item warn "Node.js" "${node_ver}，OpenClaw npm 安装需要 v22+"
+    else
+        print_diag_item warn "Node.js" "未安装，OpenClaw npm 安装会尝试安装 v22"
+    fi
+    if command -v openclaw &>/dev/null; then
+        print_diag_item ok "OpenClaw" "$(openclaw --version 2>/dev/null || echo 已安装)"
+    else
+        print_diag_item warn "OpenClaw" "未安装"
+    fi
+    local hermes_cmd=""
+    if declare -F find_hermes_cmd >/dev/null && hermes_cmd="$(find_hermes_cmd)"; then
+        print_diag_item ok "Hermes Agent" "$("$hermes_cmd" --version 2>/dev/null || echo "$hermes_cmd")"
+    else
+        print_diag_item warn "Hermes Agent" "未安装"
+    fi
+    diag_url_item optional "Hermes 官方安装脚本" "https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh"
+    echo ""
+
+    echo -e "  ${WHITE}${BOLD}磁盘、内存与端口${NC}"
     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
     df -h / 2>/dev/null | awk 'NR==1{print "  "$0} NR==2{print "  "$0}'
     df -ih / 2>/dev/null | awk 'NR==1{print "  "$0} NR==2{print "  "$0}'
+    free -h 2>/dev/null | awk 'NR==1{print "  "$0} NR==2{print "  "$0}'
     echo ""
-
-    echo -e "  ${WHITE}${BOLD}常用端口占用${NC}"
-    echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
     local port
-    for port in 22 53 80 443 3000 3001 8080 8081 8443; do
+    for port in 22 53 80 443 3000 3001 8080 8081 8443 18789; do
         if is_port_in_use "$port"; then
             print_diag_item warn "端口 ${port}" "已占用"
         else
@@ -100,7 +248,9 @@ show_system_diagnostics() {
         fi
     done
     echo ""
-    press_any_key
+    echo -e "  ${DIM}说明: 巡检通过代表环境和下载源基本可用，不代表高风险操作已执行或第三方脚本永远稳定。${NC}"
+    echo ""
+    [[ $no_pause -eq 0 ]] && press_any_key
 }
 
 show_config_backup_menu() {
@@ -205,7 +355,7 @@ show_system_tools_menu() {
         draw_menu_item "7" "📦" "系统包一键更新"
         draw_menu_item "8" "📋" "系统日志查看"
         draw_menu_item "9" "📊" "流量统计 (vnstat)"
-        draw_menu_item "10" "🩺" "系统自检诊断"
+        draw_menu_item "10" "🩺" "全功能巡检"
         draw_menu_item "11" "♻️" "配置备份恢复"
         echo ""
         draw_separator 50

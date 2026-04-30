@@ -65,6 +65,7 @@ show_help() {
     echo "  --install        安装 fish 命令到系统"
     echo "  --uninstall      卸载 fish 命令"
     echo "  --info           显示系统信息"
+    echo "  --doctor         运行全功能巡检"
     echo "  --bbr            一键开启 BBR"
     echo "  --docker         进入 Docker 管理"
     echo "  --test           进入性能测试菜单"
@@ -137,6 +138,10 @@ handle_args() {
             ;;
         --info)
             show_machine_info
+            exit 0
+            ;;
+        --doctor|--check)
+            show_system_diagnostics --no-pause
             exit 0
             ;;
         --bbr)
