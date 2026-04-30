@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =================================================================
-# fishtools (咸鱼工具箱) v1.4.5
+# fishtools (咸鱼工具箱) v1.4.6
 # Author: 咸鱼银河 (Xianyu Yinhe)
 # Github: https://github.com/qqzhoufan/fishtools
 #
@@ -15,7 +15,7 @@
 # --- 全局配置 ---
 AUTHOR_GITHUB_USER="qqzhoufan"
 MAIN_REPO_NAME="fishtools"
-VERSION="v1.4.5"
+VERSION="v1.4.6"
 SCRIPT_PATH="$(realpath "$0" 2>/dev/null || echo "$0")"
 
 # --- 颜色和样式定义 ---
@@ -495,6 +495,30 @@ generate_secret() {
         secret="fish$(date +%s%N)"
     fi
     echo "$secret"
+}
+
+get_primary_access_host() {
+    local host=""
+    host=$(get_public_ipv4 2>/dev/null || true)
+    if [[ -z "$host" ]]; then
+        host=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
+    fi
+    echo "$host"
+}
+
+print_service_access_url() {
+    local port="$1"
+    local scheme="${2:-http}"
+    local prefix="${3:-  }"
+    local host
+    host=$(get_primary_access_host)
+
+    if [[ -n "$host" ]]; then
+        echo -e "${prefix}${CYAN}${scheme}://${host}:${port}${NC}"
+    else
+        echo -e "${prefix}${YELLOW}${scheme}://<服务器IP>:${port}${NC}"
+        echo -e "  ${DIM}未能自动获取服务器 IP，请将 <服务器IP> 替换为 VPS 公网 IP。${NC}"
+    fi
 }
 
 test_sshd_config() {
@@ -2666,7 +2690,9 @@ ssh_security_menu() {
                 fi
 
                 # 获取服务器 IP 和当前用户
-                local server_ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "服务器IP")
+                local server_ip
+                server_ip=$(get_primary_access_host)
+                [[ -z "$server_ip" ]] && server_ip="<服务器IP>"
                 local current_user=$(whoami)
                 local key_name="id_ed25519"
                 [[ "$key_type" == "2" ]] && key_name="id_rsa"
@@ -3742,7 +3768,7 @@ deploy_preset_project() {
         echo ""
         echo -e "  ${WHITE}${BOLD}访问地址${NC}"
         echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
-        echo -e "  http://服务器IP:${custom_port}"
+        print_service_access_url "$custom_port" "http"
     else
         log_error "项目部署失败！"
         return 1
@@ -5914,7 +5940,7 @@ EOF
                     echo ""
                     echo -e "  ${WHITE}${BOLD}访问信息${NC}"
                     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
-                    echo -e "  地址:  ${CYAN}http://服务器IP:${oc_port}${NC}"
+                    print_service_access_url "$oc_port" "http" "  地址:  "
                     echo -e "  Token: ${CYAN}${gw_token}${NC}"
                     echo -e "  目录:  ${CYAN}${oc_dir}${NC}"
                     echo ""
@@ -6359,4 +6385,3 @@ fi
 check_dependencies
 check_update
 main
-

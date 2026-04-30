@@ -267,7 +267,7 @@ EOF
                     echo ""
                     echo -e "  ${WHITE}${BOLD}访问信息${NC}"
                     echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
-                    echo -e "  地址:  ${CYAN}http://服务器IP:${oc_port}${NC}"
+                    print_service_access_url "$oc_port" "http" "  地址:  "
                     echo -e "  Token: ${CYAN}${gw_token}${NC}"
                     echo -e "  目录:  ${CYAN}${oc_dir}${NC}"
                     echo ""

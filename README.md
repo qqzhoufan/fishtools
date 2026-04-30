@@ -4,7 +4,7 @@
 
 ### 咸鱼工具箱
 
-[![Version](https://img.shields.io/badge/version-v1.4.5-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
+[![Version](https://img.shields.io/badge/version-v1.4.6-blue.svg?style=for-the-badge)](https://github.com/qqzhoufan/fishtools)
 [![Author](https://img.shields.io/badge/author-咸鱼银河-orange.svg?style=for-the-badge)](https://github.com/qqzhoufan)
 [![Language](https://img.shields.io/badge/language-Bash-brightgreen.svg?style=for-the-badge)](https://www.gnu.org/software/bash/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
@@ -392,6 +392,13 @@ fishtools/
 ---
 
 ## 📝 更新日志
+
+### v1.4.6
+
+**部署输出修复:**
+- Docker 项目部署成功后，访问地址自动显示 VPS 公网 IP，不再硬编码 `服务器IP`
+- OpenClaw Docker 部署成功后的访问地址也同步改为自动取服务器 IP
+- SSH 密钥登录提示里的服务器地址也改为统一自动识别
 
 ### v1.4.5
 

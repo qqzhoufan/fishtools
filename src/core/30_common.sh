@@ -123,6 +123,30 @@ generate_secret() {
     echo "$secret"
 }
 
+get_primary_access_host() {
+    local host=""
+    host=$(get_public_ipv4 2>/dev/null || true)
+    if [[ -z "$host" ]]; then
+        host=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
+    fi
+    echo "$host"
+}
+
+print_service_access_url() {
+    local port="$1"
+    local scheme="${2:-http}"
+    local prefix="${3:-  }"
+    local host
+    host=$(get_primary_access_host)
+
+    if [[ -n "$host" ]]; then
+        echo -e "${prefix}${CYAN}${scheme}://${host}:${port}${NC}"
+    else
+        echo -e "${prefix}${YELLOW}${scheme}://<服务器IP>:${port}${NC}"
+        echo -e "  ${DIM}未能自动获取服务器 IP，请将 <服务器IP> 替换为 VPS 公网 IP。${NC}"
+    fi
+}
+
 test_sshd_config() {
     if command -v sshd &>/dev/null; then
         sudo "$(command -v sshd)" -t

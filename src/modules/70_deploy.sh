@@ -289,7 +289,7 @@ deploy_preset_project() {
         echo ""
         echo -e "  ${WHITE}${BOLD}访问地址${NC}"
         echo -e "  ${GRAY}──────────────────────────────────────────${NC}"
-        echo -e "  http://服务器IP:${custom_port}"
+        print_service_access_url "$custom_port" "http"
     else
         log_error "项目部署失败！"
         return 1

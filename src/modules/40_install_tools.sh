@@ -667,7 +667,9 @@ ssh_security_menu() {
                 fi
 
                 # 获取服务器 IP 和当前用户
-                local server_ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "服务器IP")
+                local server_ip
+                server_ip=$(get_primary_access_host)
+                [[ -z "$server_ip" ]] && server_ip="<服务器IP>"
                 local current_user=$(whoami)
                 local key_name="id_ed25519"
                 [[ "$key_type" == "2" ]] && key_name="id_rsa"
