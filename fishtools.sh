@@ -6078,3 +6078,4 @@ fi
 
 check_dependencies
 check_update
+main
