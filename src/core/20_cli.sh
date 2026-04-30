@@ -70,8 +70,12 @@ handle_args() {
                 elif command -v bash &>/dev/null && ! bash -n "$tmp_file" 2>/dev/null; then
                     echo -e "${RED}  ✗ 更新文件语法检查失败，已取消替换${NC}"
                     rm -f "$tmp_file"
-                elif [[ "$remote_ver" != "$current_ver" ]]; then
-                    echo -e "${GREEN}  ✓ 发现新版本 v${remote_ver}，正在更新...${NC}"
+                elif [[ "$remote_ver" != "$current_ver" ]] || ! cmp -s "$tmp_file" "$SCRIPT_PATH" 2>/dev/null; then
+                    if [[ "$remote_ver" != "$current_ver" ]]; then
+                        echo -e "${GREEN}  ✓ 发现新版本 v${remote_ver}，正在更新...${NC}"
+                    else
+                        echo -e "${GREEN}  ✓ 发现同版本内容更新，正在更新...${NC}"
+                    fi
                     chmod +x "$tmp_file"
                     if mv "$tmp_file" "$SCRIPT_PATH" 2>/dev/null || sudo mv "$tmp_file" "$SCRIPT_PATH"; then
                         echo -e "${GREEN}  ✓ 更新完成！请重新运行脚本。${NC}"

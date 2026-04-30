@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # =================================================================
-# fishtools (咸鱼工具箱) v1.4
+# fishtools (咸鱼工具箱) v1.4.1
 # Author: 咸鱼银河 (Xianyu Yinhe)
 # Github: https://github.com/qqzhoufan/fishtools
 #
@@ -15,7 +15,7 @@
 # --- 全局配置 ---
 AUTHOR_GITHUB_USER="qqzhoufan"
 MAIN_REPO_NAME="fishtools"
-VERSION="v1.4"
+VERSION="v1.4.1"
 SCRIPT_PATH="$(realpath "$0" 2>/dev/null || echo "$0")"
 
 # --- 颜色和样式定义 ---
@@ -211,8 +211,12 @@ handle_args() {
                 elif command -v bash &>/dev/null && ! bash -n "$tmp_file" 2>/dev/null; then
                     echo -e "${RED}  ✗ 更新文件语法检查失败，已取消替换${NC}"
                     rm -f "$tmp_file"
-                elif [[ "$remote_ver" != "$current_ver" ]]; then
-                    echo -e "${GREEN}  ✓ 发现新版本 v${remote_ver}，正在更新...${NC}"
+                elif [[ "$remote_ver" != "$current_ver" ]] || ! cmp -s "$tmp_file" "$SCRIPT_PATH" 2>/dev/null; then
+                    if [[ "$remote_ver" != "$current_ver" ]]; then
+                        echo -e "${GREEN}  ✓ 发现新版本 v${remote_ver}，正在更新...${NC}"
+                    else
+                        echo -e "${GREEN}  ✓ 发现同版本内容更新，正在更新...${NC}"
+                    fi
                     chmod +x "$tmp_file"
                     if mv "$tmp_file" "$SCRIPT_PATH" 2>/dev/null || sudo mv "$tmp_file" "$SCRIPT_PATH"; then
                         echo -e "${GREEN}  ✓ 更新完成！请重新运行脚本。${NC}"
